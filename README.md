@@ -125,6 +125,8 @@ w3280h2464
 RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 `.RAW14_GRBG_16B`。注意：RAW 导出是把当前解码后的 RGB 画面重新编码成 Bayer dump，适合格式互转和喂给下游工具链；它不能恢复原 sensor RAW 里已经丢失的信息。
 
 YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。
+
+`RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。若下游工具显示发黑或颜色异常，通常是字节序不一致：可尝试把 `Endian` 切换为 `Big Endian` 后再导出。
 ## 界面说明
 
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
@@ -146,6 +148,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 

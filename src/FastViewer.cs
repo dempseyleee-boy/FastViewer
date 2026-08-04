@@ -357,7 +357,7 @@ sealed class MainForm : Form
         if(p.Format=="RGB48"||p.Format=="BGR48")
         {
             int o=p.Offset+y*p.Stride+x*6;
-            byte c0=data[o+1], c1=data[o+3], c2=data[o+5];
+            int hi=p.Little?1:0; byte c0=data[o+hi], c1=data[o+2+hi], c2=data[o+4+hi];
             if(p.Format=="RGB48"){r=c0;g=c1;b=c2;}else{b=c0;g=c1;r=c2;}
             return;
         }
@@ -518,8 +518,9 @@ sealed class MainForm : Form
             else
             {
                 int c0=kind=="RGB48"?r:b,c1=g,c2=kind=="RGB48"?b:r;
-                ushort v0=(ushort)(c0*257),v1=(ushort)(c1*257),v2=(ushort)(c2*257);
-                outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v2&255);outb[o++]=(byte)(v2>>8);
+                ushort v0=(ushort)(c0*257),v1=(ushort)(c1*257),v2=(ushort)(c2*257); bool little=endianBox.SelectedIndex==0;
+                if(little){outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v2&255);outb[o++]=(byte)(v2>>8);}
+                else{outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v2>>8);outb[o++]=(byte)(v2&255);}
             }
         }
         return outb;
@@ -638,6 +639,7 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
 }
 }
+
 
 
 
