@@ -114,6 +114,7 @@ sealed class MainForm : Form
         pic.Location=new Point(0,0); pic.SizeMode=PictureBoxSizeMode.StretchImage; pic.BackColor=Color.FromArgb(8,10,14); pic.MouseEnter+=delegate{imagePanel.Focus();}; pic.MouseWheel+=ImageWheel; gallery.MouseEnter+=delegate{imagePanel.Focus();}; gallery.MouseWheel+=ImageWheel; imagePanel.Controls.Add(pic);
 
         status.Dock=DockStyle.Fill; status.TextAlign=ContentAlignment.MiddleLeft; status.Padding=new Padding(12,0,0,0); status.BackColor=Color.FromArgb(24,27,34); status.ForeColor=Color.FromArgb(196,204,216); status.Text="Open a phone camera RAW/YUV/RGB file."; right.Controls.Add(status,0,2);
+        EnableDrop(this); EnableDrop(root); EnableDrop(leftShell); EnableDrop(left); EnableDrop(pathBox); EnableDrop(right); EnableDrop(header); EnableDrop(viewerFrame); EnableDrop(imagePanel); EnableDrop(pic); EnableDrop(gallery); EnableDrop(status);
     }
 
     void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=64,BackColor=Color.FromArgb(24,27,34)};var a=new Label{Text=title,Dock=DockStyle.Top,Height=30,Font=new Font("Segoe UI Semibold",15F,FontStyle.Bold),ForeColor=Color.White};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=24,ForeColor=Color.FromArgb(142,153,170)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
@@ -126,6 +127,44 @@ sealed class MainForm : Form
     void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.FromArgb(34,38,48);b.ForeColor=Color.FromArgb(235,240,247);}
     void StyleButton(Button b,bool primary){b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(67,76,94);b.BackColor=primary?Color.FromArgb(0,122,204):Color.FromArgb(35,40,50);b.ForeColor=Color.White;}
 
+
+    void EnableDrop(Control c)
+    {
+        c.AllowDrop=true;
+        c.DragEnter+=DragFilesEnter;
+        c.DragDrop+=DragFilesDrop;
+    }
+    void DragFilesEnter(object sender,DragEventArgs e)
+    {
+        e.Effect=(e.Data!=null&&e.Data.GetDataPresent(DataFormats.FileDrop))?DragDropEffects.Copy:DragDropEffects.None;
+    }
+    void DragFilesDrop(object sender,DragEventArgs e)
+    {
+        try
+        {
+            if(e.Data==null||!e.Data.GetDataPresent(DataFormats.FileDrop))return;
+            string[] dropped=(string[])e.Data.GetData(DataFormats.FileDrop);
+            string[] files=CollectDroppedFiles(dropped);
+            if(files.Length==0){MessageBox.Show(this,"No files were dropped.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+            if(files.Length==1){pathBox.Text=files[0];ApplyFileName(files[0]);OpenFileNow();}
+            else OpenMany(files);
+        }
+        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+    }
+    static string[] CollectDroppedFiles(string[] dropped)
+    {
+        var files=new List<string>();
+        if(dropped==null)return files.ToArray();
+        foreach(string item in dropped)
+        {
+            if(File.Exists(item))files.Add(item);
+            else if(Directory.Exists(item))
+            {
+                foreach(string f in Directory.GetFiles(item))files.Add(f);
+            }
+        }
+        return files.ToArray();
+    }
     void Browse()
     {
         using(var d=new OpenFileDialog())
@@ -416,6 +455,7 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();}base.Dispose(disposing);}    
 }
 }
+
 
 
 
