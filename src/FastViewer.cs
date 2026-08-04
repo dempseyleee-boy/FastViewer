@@ -177,21 +177,48 @@ sealed class MainForm : Form
         }
     }
 
-    void ApplyFileName(string path)
+    Params DetectParamsFromFile(string path)
     {
-        int ww,hh; if(TryDims(path,out ww,out hh)){wBox.Text=ww.ToString(); hBox.Text=hh.ToString();}
-        string ext=Path.GetExtension(path).ToLowerInvariant();
+        var q=new Params();
+        int ww,hh; if(TryDims(path,out ww,out hh)){q.W=ww;q.H=hh;}else{Int32.TryParse(wBox.Text,out q.W);Int32.TryParse(hBox.Text,out q.H);}
+        q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim());
+        q.Little=true; q.Lsb=true; q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90;
+        q.Format="RAW14_16B"; string ext=Path.GetExtension(path).ToLowerInvariant();
         var m=Regex.Match(ext,@"^\.raw(8|10|12|14|16)_(rggb|grbg|gbrg|bggr)_(packed|16b|8b)$",RegexOptions.IgnoreCase);
         if(m.Success)
         {
             string bits=m.Groups[1].Value, pat=m.Groups[2].Value.ToUpperInvariant(), store=m.Groups[3].Value.ToUpperInvariant();
-            Select(fmtBox,"RAW"+bits+"_"+store); Select(patternBox,pat); if(store=="16B"||store=="8B")alignBox.SelectedIndex=0; SetDefaultStride(); status.Text="Detected "+ext; return;
+            q.Format="RAW"+bits+"_"+store;
+            q.Pattern=PatternIndex(pat);
+            q.Lsb=true;
         }
-        string f=ext.Length>1?ext.Substring(1).ToUpperInvariant():"";
-        if(f=="RGB")f="RGB24"; if(f=="BGR")f="BGR24"; if(f=="RGBA")f="RGBA32"; if(f=="BGRA")f="BGRA32";
-        if(Select(fmtBox,f)){SetDefaultStride(); status.Text="Detected "+ext;}
+        else
+        {
+            string f=ext.Length>1?ext.Substring(1).ToUpperInvariant():"";
+            if(f=="RGB")f="RGB24"; if(f=="BGR")f="BGR24"; if(f=="RGBA")f="RGBA32"; if(f=="BGRA")f="BGRA32";
+            bool known=false; for(int i=0;i<formats.Length;i++)if(String.Equals(formats[i],f,StringComparison.OrdinalIgnoreCase)){known=true;break;}
+            q.Format=known?f:"RAW14_16B";
+        }
+        q.Stride=q.W>0?DefaultStride(q.W,q.Format):0;
+        q.Packed=q.Format.EndsWith("PACKED"); q.Bits=8; var bm=Regex.Match(q.Format,@"RAW(\d+)_"); if(bm.Success)q.Bits=Int32.Parse(bm.Groups[1].Value);
+        string b=blackBox.Text.Trim().ToLowerInvariant(), w=whiteBox.Text.Trim().ToLowerInvariant(); q.AutoLevels=b==""||w==""||b=="auto"||w=="auto"; q.Black=q.AutoLevels?0:Int32.Parse(b); q.White=q.AutoLevels?MaxRaw(q.Bits):Int32.Parse(w);
+        return q;
     }
-
+    void ApplyDetectedParams(Params q)
+    {
+        if(q.W>0)wBox.Text=q.W.ToString(); if(q.H>0)hBox.Text=q.H.ToString();
+        Select(fmtBox,q.Format); Select(patternBox,PatternName(q.Pattern));
+        endianBox.SelectedIndex=q.Little?0:1; alignBox.SelectedIndex=q.Lsb?0:1;
+        strideBox.Text=q.Stride>0?q.Stride.ToString():"";
+    }
+    void ApplyFileName(string path)
+    {
+        Params q=DetectParamsFromFile(path);
+        ApplyDetectedParams(q);
+        status.Text="Detected "+Path.GetExtension(path).ToLowerInvariant();
+    }
+    static int PatternIndex(string pat){string p=pat.ToUpperInvariant(); if(p=="RGGB")return 1;if(p=="BGGR")return 2;if(p=="GBRG")return 3;return 0;}
+    static string PatternName(int index){switch(index){case 1:return "RGGB";case 2:return "BGGR";case 3:return "GBRG";default:return "GRBG";}}
     static bool TryDims(string path,out int w,out int h)
     {
         string n=Path.GetFileName(path); string[] ps={@"(?<!\d)(\d{2,5})\s*[xX]\s*(\d{2,5})(?!\d)",@"(?<!\d)w\s*(\d{2,5})\s*h\s*(\d{2,5})(?!\d)",@"(?<!\d)(\d{2,5})\s*[_-]\s*(\d{2,5})(?!\d)"};
@@ -263,9 +290,7 @@ sealed class MainForm : Form
     }
     Params ParamsForFile(string path)
     {
-        pathBox.Text=path;
-        ApplyFileName(path);
-        return ReadParams();
+        return DetectParamsFromFile(path);
     }
     void OpenMany(string[] paths)
     {

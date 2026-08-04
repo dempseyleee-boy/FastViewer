@@ -130,6 +130,7 @@ YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的�
 ## 界面说明
 
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
+- 每次打开 / 拖入新文件时，`Width`、`Height`、`Format`、`Stride`、`Endian`、`Bits`、`Bayer` 会按文件名重新检测刷新，避免上一张图的参数残留。
 - 单图模式会渲染完整原图，并默认适配到窗口内完整显示。
 - 多图模式会把一次选择的多张文件显示成卡片墙，方便对比 RAW / RGB / YUV 输出。
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
@@ -148,6 +149,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 
