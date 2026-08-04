@@ -88,16 +88,43 @@ w3280h2464
 `assets/FastViewer.ico` 是程序图标，会在构建时通过 `/win32icon` 嵌入 exe。`assets/FastViewer_icon.png` 是同款 PNG 预览图，方便在 README 或发布页展示。
 
 
-## 导出格式
+## 导出 / 转换格式
 
-左侧 `Export` 下拉框用于选择转换/导出格式：
+左侧 `Export` 下拉框用于选择转换/导出格式。单图模式点击 **Export Image** 会弹出保存路径；多图模式点击 **Export Image** 会选择导出文件夹，并按原文件名批量导出。若目标文件已存在，会自动追加 `_2`、`_3` 等后缀避免覆盖。
 
-- `PNG`：默认选项，适合无损保存和日常对比。
-- `BMP`：未压缩位图，适合简单工具链读取。
-- `JPEG`：有损压缩，适合快速分享预览。
-- `TIFF`：适合部分图像分析工具链。
+图片格式：
 
-单图模式点击 **Export Image** 会弹出保存路径；多图模式点击 **Export Image** 会选择导出文件夹，并按原文件名批量导出。若目标文件已存在，会自动追加 `_2`、`_3` 等后缀避免覆盖。
+- `PNG`
+- `BMP`
+- `JPEG`
+- `TIFF`
+
+相机 frame dump 格式：
+
+- `RAW8_8B`
+- `RAW10_16B`
+- `RAW10_PACKED`
+- `RAW12_16B`
+- `RAW12_PACKED`
+- `RAW14_16B`
+- `RAW14_PACKED`
+- `RAW16_16B`
+- `RGB24`
+- `BGR24`
+- `RGBA32`
+- `BGRA32`
+- `RGB48`
+- `BGR48`
+- `NV21`
+- `NV12`
+- `I420`
+- `YV12`
+- `YUV420P`
+- `P010`
+
+RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 `.RAW14_GRBG_16B`。注意：RAW 导出是把当前解码后的 RGB 画面重新编码成 Bayer dump，适合格式互转和喂给下游工具链；它不能恢复原 sensor RAW 里已经丢失的信息。
+
+YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。
 ## 界面说明
 
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
@@ -106,7 +133,7 @@ w3280h2464
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
 - `Stride` 可留空，程序会按当前格式自动给默认 stride。
 - `Rotate` 支持 `0`、`90`、`180`、`270` 度旋转。
-- `Export` 可以选择 `PNG`、`BMP`、`JPEG`、`TIFF`。单图模式导出当前图像；多图模式会选择文件夹并批量导出当前已渲染的图像。
+- `Export` 可以选择图片格式或相机 frame dump 格式，用于 RAW / RGB / YUV / NV21 等格式之间转换导出。
 
 ## 从源码构建
 
@@ -119,6 +146,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 

@@ -94,7 +94,7 @@ sealed class MainForm : Form
 
         AddSection(left,"VIEW",25);
         AddButton(left,"Fit Window",delegate{FitWindow();},0,26,2);
-        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(new object[]{"PNG","BMP","JPEG","TIFF"}); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
+        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(new object[]{"PNG","BMP","JPEG","TIFF","RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"}); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
         AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
 
         var hint=new Label{Text="Filename suffix is case-insensitive\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nMulti-select files in Browse\r\nCtrl + mouse wheel = zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,14,0,0),ForeColor=Color.FromArgb(144,153,166)};
@@ -450,9 +450,23 @@ sealed class MainForm : Form
     void ApplyZoom(){if(current==null)return; pic.Size=new Size(Math.Max(1,(int)Math.Round(current.Width*zoom)),Math.Max(1,(int)Math.Round(current.Height*zoom)));}
     void UpdateStatus(){if(multiMode){status.Text="Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%";return;} if(current==null||p==null)return; status.Text=Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite;}
     string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
-    string ExportExt(){string k=ExportKind();return k=="JPEG"?".jpg":(k=="TIFF"?".tif":"."+k.ToLowerInvariant());}
+    bool IsImageExportKind(string k){return k=="PNG"||k=="BMP"||k=="JPEG"||k=="TIFF";}
+    string ExportExt()
+    {
+        string k=ExportKind();
+        if(k=="JPEG")return ".jpg";
+        if(k=="TIFF")return ".tif";
+        if(k=="PNG"||k=="BMP")return "."+k.ToLowerInvariant();
+        if(k.StartsWith("RAW"))
+        {
+            string pat=patternBox.SelectedItem==null?"GRBG":patternBox.SelectedItem.ToString().ToUpperInvariant();
+            var m=Regex.Match(k,@"^(RAW\d+)_(.+)$");
+            return m.Success?"."+m.Groups[1].Value+"_"+pat+"_"+m.Groups[2].Value:"."+k;
+        }
+        return "."+k;
+    }
     ImageFormat ExportImageFormat(){string k=ExportKind();if(k=="BMP")return ImageFormat.Bmp;if(k=="JPEG")return ImageFormat.Jpeg;if(k=="TIFF")return ImageFormat.Tiff;return ImageFormat.Png;}
-    string ExportFilter(){string k=ExportKind();if(k=="BMP")return "BMP image|*.bmp|All files|*.*";if(k=="JPEG")return "JPEG image|*.jpg;*.jpeg|All files|*.*";if(k=="TIFF")return "TIFF image|*.tif;*.tiff|All files|*.*";return "PNG image|*.png|All files|*.*";}
+    string ExportFilter(){string k=ExportKind();if(k=="BMP")return "BMP image|*.bmp|All files|*.*";if(k=="JPEG")return "JPEG image|*.jpg;*.jpeg|All files|*.*";if(k=="TIFF")return "TIFF image|*.tif;*.tiff|All files|*.*";if(k=="PNG")return "PNG image|*.png|All files|*.*";return k+" frame dump|*"+ExportExt()+"|All files|*.*";}
     static string UniquePath(string path)
     {
         if(!File.Exists(path))return path;
@@ -464,18 +478,136 @@ sealed class MainForm : Form
         }
         return Path.Combine(dir,name+"_"+DateTime.Now.ToString("yyyyMMdd_HHmmss")+ext);
     }
+    byte[] BitmapBytes(Bitmap bmp,out int stride)
+    {
+        BitmapData bd=bmp.LockBits(new Rectangle(0,0,bmp.Width,bmp.Height),ImageLockMode.ReadOnly,PixelFormat.Format24bppRgb);
+        stride=bd.Stride;
+        byte[] pix=new byte[stride*bmp.Height];
+        Marshal.Copy(bd.Scan0,pix,0,pix.Length);
+        bmp.UnlockBits(bd);
+        return pix;
+    }
+    static void BgrAt(byte[] pix,int stride,int x,int y,out int r,out int g,out int b)
+    {
+        int pos=y*stride+x*3;
+        b=pix[pos];g=pix[pos+1];r=pix[pos+2];
+    }
+    static int Y601(int r,int g,int b){return Clamp(((66*r+129*g+25*b+128)>>8)+16);}
+    static int U601(int r,int g,int b){return Clamp(((-38*r-74*g+112*b+128)>>8)+128);}
+    static int V601(int r,int g,int b){return Clamp(((112*r-94*g-18*b+128)>>8)+128);}
+    static char BayerSiteForPattern(int pattern,int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
+    byte[] EncodeConvertedFrame(Bitmap bmp,string kind)
+    {
+        int stride; byte[] pix=BitmapBytes(bmp,out stride); int w=bmp.Width,h=bmp.Height;
+        if(kind=="RGB24"||kind=="BGR24"||kind=="RGBA32"||kind=="BGRA32"||kind=="RGB48"||kind=="BGR48")return EncodeRgbDump(pix,stride,w,h,kind);
+        if(kind=="NV21"||kind=="NV12"||kind=="I420"||kind=="YV12"||kind=="YUV420P"||kind=="P010")return EncodeYuvDump(pix,stride,w,h,kind);
+        if(kind.StartsWith("RAW"))return EncodeRawDump(pix,stride,w,h,kind);
+        throw new Exception("Unsupported export format: "+kind);
+    }
+    byte[] EncodeRgbDump(byte[] pix,int stride,int w,int h,string kind)
+    {
+        int ps=(kind=="RGB24"||kind=="BGR24")?3:(kind=="RGBA32"||kind=="BGRA32"?4:6);
+        byte[] outb=new byte[w*h*ps]; int o=0;
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++)
+        {
+            int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);
+            if(kind=="RGB24"){outb[o++]=(byte)r;outb[o++]=(byte)g;outb[o++]=(byte)b;}
+            else if(kind=="BGR24"){outb[o++]=(byte)b;outb[o++]=(byte)g;outb[o++]=(byte)r;}
+            else if(kind=="RGBA32"){outb[o++]=(byte)r;outb[o++]=(byte)g;outb[o++]=(byte)b;outb[o++]=255;}
+            else if(kind=="BGRA32"){outb[o++]=(byte)b;outb[o++]=(byte)g;outb[o++]=(byte)r;outb[o++]=255;}
+            else
+            {
+                int c0=kind=="RGB48"?r:b,c1=g,c2=kind=="RGB48"?b:r;
+                ushort v0=(ushort)(c0*257),v1=(ushort)(c1*257),v2=(ushort)(c2*257);
+                outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v2&255);outb[o++]=(byte)(v2>>8);
+            }
+        }
+        return outb;
+    }
+    byte[] EncodeYuvDump(byte[] pix,int stride,int w,int h,string kind)
+    {
+        if((w&1)!=0||(h&1)!=0)throw new Exception(kind+" export requires even width and height.");
+        if(kind=="P010")
+        {
+            byte[] outb=new byte[w*h*3]; int o=0;
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);ushort yy=(ushort)(Y601(r,g,b)<<8);outb[o++]=(byte)(yy&255);outb[o++]=(byte)(yy>>8);}            
+            for(int y=0;y<h;y+=2)for(int x=0;x<w;x+=2){int u,v;AvgUv(pix,stride,w,h,x,y,out u,out v);ushort uu=(ushort)(u<<8),vv=(ushort)(v<<8);outb[o++]=(byte)(uu&255);outb[o++]=(byte)(uu>>8);outb[o++]=(byte)(vv&255);outb[o++]=(byte)(vv>>8);}            
+            return outb;
+        }
+        byte[] yplane=new byte[w*h];
+        int cw=(w+1)/2,ch=(h+1)/2; byte[] uplane=new byte[cw*ch],vplane=new byte[cw*ch];
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);yplane[y*w+x]=(byte)Y601(r,g,b);}        
+        for(int y=0;y<h;y+=2)for(int x=0;x<w;x+=2){int u,v;AvgUv(pix,stride,w,h,x,y,out u,out v);int ci=(y/2)*cw+(x/2);uplane[ci]=(byte)u;vplane[ci]=(byte)v;}
+        if(kind=="NV21"||kind=="NV12")
+        {
+            byte[] outb=new byte[w*h+w*ch]; Buffer.BlockCopy(yplane,0,outb,0,yplane.Length); int o=yplane.Length;
+            for(int cy=0;cy<ch;cy++)for(int cx=0;cx<cw;cx++){int i=cy*cw+cx;if(kind=="NV21"){outb[o++]=vplane[i];outb[o++]=uplane[i];}else{outb[o++]=uplane[i];outb[o++]=vplane[i];}}
+            return outb;
+        }
+        else
+        {
+            byte[] outb=new byte[yplane.Length+uplane.Length+vplane.Length]; Buffer.BlockCopy(yplane,0,outb,0,yplane.Length);
+            if(kind=="YV12"){Buffer.BlockCopy(vplane,0,outb,yplane.Length,vplane.Length);Buffer.BlockCopy(uplane,0,outb,yplane.Length+vplane.Length,uplane.Length);}else{Buffer.BlockCopy(uplane,0,outb,yplane.Length,uplane.Length);Buffer.BlockCopy(vplane,0,outb,yplane.Length+uplane.Length,vplane.Length);}            
+            return outb;
+        }
+    }
+    static void AvgUv(byte[] pix,int stride,int w,int h,int x,int y,out int u,out int v)
+    {
+        int us=0,vs=0,c=0;
+        for(int yy=y;yy<y+2&&yy<h;yy++)for(int xx=x;xx<x+2&&xx<w;xx++){int r,g,b;BgrAt(pix,stride,xx,yy,out r,out g,out b);us+=U601(r,g,b);vs+=V601(r,g,b);c++;}
+        u=us/Math.Max(1,c);v=vs/Math.Max(1,c);
+    }
+    byte[] EncodeRawDump(byte[] pix,int stride,int w,int h,string kind)
+    {
+        var m=Regex.Match(kind,@"^RAW(\d+)_(16B|8B|PACKED)$"); if(!m.Success)throw new Exception("Unsupported RAW export: "+kind);
+        int bits=Int32.Parse(m.Groups[1].Value), max=MaxRaw(bits), pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; string store=m.Groups[2].Value;
+        if(store=="8B")
+        {
+            byte[] outb=new byte[w*h]; int o=0; for(int y=0;y<h;y++)for(int x=0;x<w;x++)outb[o++]=(byte)RawSampleFromRgb(pix,stride,x,y,bits,pattern,max); return outb;
+        }
+        if(store=="16B")
+        {
+            byte[] outb=new byte[w*h*2]; int o=0; for(int y=0;y<h;y++)for(int x=0;x<w;x++){ushort v=(ushort)RawSampleFromRgb(pix,stride,x,y,bits,pattern,max);outb[o++]=(byte)(v&255);outb[o++]=(byte)(v>>8);} return outb;
+        }
+        if(bits==10)return PackRaw10(pix,stride,w,h,bits,pattern,max);
+        if(bits==12)return PackRaw12(pix,stride,w,h,bits,pattern,max);
+        return PackRawBits(pix,stride,w,h,bits,pattern,max);
+    }
+    int RawSampleFromRgb(byte[] pix,int stride,int x,int y,int bits,int pattern,int max)
+    {
+        int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b); char site=BayerSiteForPattern(pattern,x,y); int c=site=='R'?r:(site=='B'?b:g); return bits==16?c*257:(c*max+127)/255;
+    }
+    byte[] PackRaw10(byte[] pix,int stride,int w,int h,int bits,int pattern,int max)
+    {
+        int row=((w+3)/4)*5; byte[] outb=new byte[row*h];
+        for(int y=0;y<h;y++)for(int x=0;x<w;x+=4){int o=y*row+(x/4)*5;int v0=RawSampleFromRgb(pix,stride,x,y,bits,pattern,max),v1=RawSampleFromRgb(pix,stride,Math.Min(x+1,w-1),y,bits,pattern,max),v2=RawSampleFromRgb(pix,stride,Math.Min(x+2,w-1),y,bits,pattern,max),v3=RawSampleFromRgb(pix,stride,Math.Min(x+3,w-1),y,bits,pattern,max);outb[o]=(byte)v0;outb[o+1]=(byte)v1;outb[o+2]=(byte)v2;outb[o+3]=(byte)v3;outb[o+4]=(byte)((v0>>8)|((v1>>8)<<2)|((v2>>8)<<4)|((v3>>8)<<6));}
+        return outb;
+    }
+    byte[] PackRaw12(byte[] pix,int stride,int w,int h,int bits,int pattern,int max)
+    {
+        int row=((w+1)/2)*3; byte[] outb=new byte[row*h];
+        for(int y=0;y<h;y++)for(int x=0;x<w;x+=2){int o=y*row+(x/2)*3;int v0=RawSampleFromRgb(pix,stride,x,y,bits,pattern,max),v1=RawSampleFromRgb(pix,stride,Math.Min(x+1,w-1),y,bits,pattern,max);outb[o]=(byte)v0;outb[o+1]=(byte)v1;outb[o+2]=(byte)((v0>>8)|((v1>>8)<<4));}
+        return outb;
+    }
+    byte[] PackRawBits(byte[] pix,int stride,int w,int h,int bits,int pattern,int max)
+    {
+        int row=(w*bits+7)/8; byte[] outb=new byte[row*h];
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++){int val=RawSampleFromRgb(pix,stride,x,y,bits,pattern,max), bit=x*bits, bo=y*row+bit/8, sh=bit&7; int word=val<<sh; outb[bo]|=(byte)word; if(bo+1<outb.Length)outb[bo+1]|=(byte)(word>>8); if(bo+2<outb.Length)outb[bo+2]|=(byte)(word>>16);}
+        return outb;
+    }
     void ExportImage()
     {
         if(multiMode){ExportManyImages();return;}
         if(data==null){MessageBox.Show(this,"Open a file first.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
         using(var d=new SaveFileDialog())
         {
-            d.Title="Export "+ExportKind();
+            string kind=ExportKind();
+            d.Title="Export "+kind;
             d.Filter=ExportFilter();
             d.FileName=Path.GetFileNameWithoutExtension(openedPath)+ExportExt();
             if(d.ShowDialog(this)!=DialogResult.OK)return;
-            status.Text="Exporting "+ExportKind()+"...";
-            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); b.Save(d.FileName,ExportImageFormat()); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});
+            status.Text="Exporting "+kind+"...";
+            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(d.FileName,ExportImageFormat()); else File.WriteAllBytes(d.FileName,EncodeConvertedFrame(b,kind)); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});
         }
     }
     void ExportManyImages()
@@ -483,22 +615,22 @@ sealed class MainForm : Form
         if(galleryItems.Count==0){MessageBox.Show(this,"No rendered images to export.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
         using(var d=new FolderBrowserDialog())
         {
-            d.Description="Choose export folder for "+galleryItems.Count+" "+ExportKind()+" images";
+            d.Description="Choose export folder for "+galleryItems.Count+" "+ExportKind()+" files";
             if(d.ShowDialog(this)!=DialogResult.OK)return;
-            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind();
-            status.Text="Exporting 0 / "+galleryItems.Count+" "+kind+" images...";
+            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind(); bool imageOut=IsImageExportKind(kind);
+            status.Text="Exporting 0 / "+galleryItems.Count+" "+kind+" files...";
             ThreadPool.QueueUserWorkItem(delegate{try{
                 int n=0;
                 foreach(ViewerItem item in galleryItems)
                 {
                     string name=Path.GetFileNameWithoutExtension(item.Path);
                     string outPath=UniquePath(Path.Combine(folder,name+ext));
-                    item.Bitmap.Save(outPath,fmt);
+                    if(imageOut)item.Bitmap.Save(outPath,fmt); else File.WriteAllBytes(outPath,EncodeConvertedFrame(item.Bitmap,kind));
                     n++;
                     int shown=n;
-                    BeginInvoke((Action)delegate{status.Text="Exporting "+shown+" / "+galleryItems.Count+" "+kind+" images...";});
+                    BeginInvoke((Action)delegate{status.Text="Exporting "+shown+" / "+galleryItems.Count+" "+kind+" files...";});
                 }
-                BeginInvoke((Action)delegate{status.Text="Exported "+galleryItems.Count+" "+kind+" images to "+folder;});
+                BeginInvoke((Action)delegate{status.Text="Exported "+galleryItems.Count+" "+kind+" files to "+folder;});
             }catch(Exception ex){ShowErr(ex);}});
         }
     }
@@ -506,6 +638,8 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
 }
 }
+
+
 
 
 
