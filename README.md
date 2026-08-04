@@ -87,6 +87,17 @@ w3280h2464
 
 `assets/FastViewer.ico` 是程序图标，会在构建时通过 `/win32icon` 嵌入 exe。`assets/FastViewer_icon.png` 是同款 PNG 预览图，方便在 README 或发布页展示。
 
+
+## 导出格式
+
+左侧 `Export` 下拉框用于选择转换/导出格式：
+
+- `PNG`：默认选项，适合无损保存和日常对比。
+- `BMP`：未压缩位图，适合简单工具链读取。
+- `JPEG`：有损压缩，适合快速分享预览。
+- `TIFF`：适合部分图像分析工具链。
+
+单图模式点击 **Export Image** 会弹出保存路径；多图模式点击 **Export Image** 会选择导出文件夹，并按原文件名批量导出。若目标文件已存在，会自动追加 `_2`、`_3` 等后缀避免覆盖。
 ## 界面说明
 
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
@@ -95,7 +106,7 @@ w3280h2464
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
 - `Stride` 可留空，程序会按当前格式自动给默认 stride。
 - `Rotate` 支持 `0`、`90`、`180`、`270` 度旋转。
-- `Export BMP` 当前支持单图导出；多图批量导出后续可扩展。
+- `Export` 可以选择 `PNG`、`BMP`、`JPEG`、`TIFF`。单图模式导出当前图像；多图模式会选择文件夹并批量导出当前已渲染的图像。
 
 ## 从源码构建
 
@@ -108,6 +119,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 

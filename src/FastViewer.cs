@@ -41,9 +41,9 @@ sealed class MainForm : Form
 {
     TextBox pathBox=new TextBox(), wBox=new TextBox(), hBox=new TextBox(), strideBox=new TextBox(), offsetBox=new TextBox();
     TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
-    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox();
+    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), exportBox=new ComboBox();
     Panel imagePanel=new Panel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
-    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>();
+    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>();
 
     string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"};
 
@@ -94,10 +94,11 @@ sealed class MainForm : Form
 
         AddSection(left,"VIEW",25);
         AddButton(left,"Fit Window",delegate{FitWindow();},0,26,2);
-        AddButton(left,"Refresh",delegate{RefreshPreview();},0,27,1); AddButton(left,"Export BMP",delegate{ExportBmp();},1,27,1);
+        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(new object[]{"PNG","BMP","JPEG","TIFF"}); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
+        AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
 
         var hint=new Label{Text="Filename suffix is case-insensitive\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nMulti-select files in Browse\r\nCtrl + mouse wheel = zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,14,0,0),ForeColor=Color.FromArgb(144,153,166)};
-        left.Controls.Add(hint,0,29); left.SetColumnSpan(hint,2);
+        left.Controls.Add(hint,0,30); left.SetColumnSpan(hint,2);
 
         var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=Color.FromArgb(15,17,21),Padding=new Padding(14,0,0,0)};
         right.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
@@ -247,6 +248,7 @@ sealed class MainForm : Form
         pic.Image=null;
         foreach(Bitmap b in galleryBitmaps)b.Dispose();
         galleryBitmaps.Clear();
+        galleryItems.Clear();
         gallery.Controls.Clear();
         galleryZoom=1.0;
         imagePanel.AutoScroll=false;
@@ -307,7 +309,7 @@ sealed class MainForm : Form
     }
     void AddImageCard(ViewerItem job,int done,int total)
     {
-        galleryBitmaps.Add(job.Bitmap);
+        galleryBitmaps.Add(job.Bitmap); galleryItems.Add(job);
         var card=new TableLayoutPanel{ColumnCount=1,RowCount=2,BackColor=Color.FromArgb(24,27,34),Margin=new Padding(8),Padding=new Padding(8)};
         card.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
         card.RowStyles.Add(new RowStyle(SizeType.Percent,100));
@@ -447,14 +449,64 @@ sealed class MainForm : Form
     }
     void ApplyZoom(){if(current==null)return; pic.Size=new Size(Math.Max(1,(int)Math.Round(current.Width*zoom)),Math.Max(1,(int)Math.Round(current.Height*zoom)));}
     void UpdateStatus(){if(multiMode){status.Text="Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%";return;} if(current==null||p==null)return; status.Text=Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite;}
-    void ExportBmp()
+    string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
+    string ExportExt(){string k=ExportKind();return k=="JPEG"?".jpg":(k=="TIFF"?".tif":"."+k.ToLowerInvariant());}
+    ImageFormat ExportImageFormat(){string k=ExportKind();if(k=="BMP")return ImageFormat.Bmp;if(k=="JPEG")return ImageFormat.Jpeg;if(k=="TIFF")return ImageFormat.Tiff;return ImageFormat.Png;}
+    string ExportFilter(){string k=ExportKind();if(k=="BMP")return "BMP image|*.bmp|All files|*.*";if(k=="JPEG")return "JPEG image|*.jpg;*.jpeg|All files|*.*";if(k=="TIFF")return "TIFF image|*.tif;*.tiff|All files|*.*";return "PNG image|*.png|All files|*.*";}
+    static string UniquePath(string path)
     {
-        if(multiMode){MessageBox.Show(this,"Multi-image mode does not batch export yet. Open one file to export BMP.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} if(data==null){MessageBox.Show(this,"Open a file first.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} using(var d=new SaveFileDialog()){d.Title="Export BMP";d.Filter="BMP image|*.bmp|All files|*.*";d.FileName=Path.GetFileNameWithoutExtension(openedPath)+".bmp"; if(d.ShowDialog(this)!=DialogResult.OK)return; status.Text="Exporting BMP..."; ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); b.Save(d.FileName,ImageFormat.Bmp); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});}    
+        if(!File.Exists(path))return path;
+        string dir=Path.GetDirectoryName(path), name=Path.GetFileNameWithoutExtension(path), ext=Path.GetExtension(path);
+        for(int i=2;i<10000;i++)
+        {
+            string p2=Path.Combine(dir,name+"_"+i+ext);
+            if(!File.Exists(p2))return p2;
+        }
+        return Path.Combine(dir,name+"_"+DateTime.Now.ToString("yyyyMMdd_HHmmss")+ext);
+    }
+    void ExportImage()
+    {
+        if(multiMode){ExportManyImages();return;}
+        if(data==null){MessageBox.Show(this,"Open a file first.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+        using(var d=new SaveFileDialog())
+        {
+            d.Title="Export "+ExportKind();
+            d.Filter=ExportFilter();
+            d.FileName=Path.GetFileNameWithoutExtension(openedPath)+ExportExt();
+            if(d.ShowDialog(this)!=DialogResult.OK)return;
+            status.Text="Exporting "+ExportKind()+"...";
+            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); b.Save(d.FileName,ExportImageFormat()); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});
+        }
+    }
+    void ExportManyImages()
+    {
+        if(galleryItems.Count==0){MessageBox.Show(this,"No rendered images to export.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+        using(var d=new FolderBrowserDialog())
+        {
+            d.Description="Choose export folder for "+galleryItems.Count+" "+ExportKind()+" images";
+            if(d.ShowDialog(this)!=DialogResult.OK)return;
+            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind();
+            status.Text="Exporting 0 / "+galleryItems.Count+" "+kind+" images...";
+            ThreadPool.QueueUserWorkItem(delegate{try{
+                int n=0;
+                foreach(ViewerItem item in galleryItems)
+                {
+                    string name=Path.GetFileNameWithoutExtension(item.Path);
+                    string outPath=UniquePath(Path.Combine(folder,name+ext));
+                    item.Bitmap.Save(outPath,fmt);
+                    n++;
+                    int shown=n;
+                    BeginInvoke((Action)delegate{status.Text="Exporting "+shown+" / "+galleryItems.Count+" "+kind+" images...";});
+                }
+                BeginInvoke((Action)delegate{status.Text="Exported "+galleryItems.Count+" "+kind+" images to "+folder;});
+            }catch(Exception ex){ShowErr(ex);}});
+        }
     }
     void ShowErr(Exception ex){BeginInvoke((Action)delegate{status.Text="Failed.";MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);});}
-    protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();}base.Dispose(disposing);}    
+    protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
 }
 }
+
 
 
 
