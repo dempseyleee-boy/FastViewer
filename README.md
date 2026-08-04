@@ -2,11 +2,11 @@
 
 FastViewer 是一个 Windows 桌面查看器，用来直接打开手机 Camera 导出的 RAW / YUV / RGB 原始帧文件。它可以从文件名里自动解析常见的宽高和格式后缀，并支持单图查看、多图同时对比。
 
-当前版本：**Phone Camera Raw/YUV/RGB Viewer v14**
+当前版本：**FastViewer**
 
 ## 快速开始
 
-1. 打开 `dist/PhoneCameraRawViewer.exe`。
+1. 打开 `dist/FastViewer.exe`。
 2. 点击 **Browse / Multi**。
 3. 选择 1 张图进入单图查看；一次选择多张图会进入多图对比模式。
 4. 点击 **Fit Window** 可以重新适配窗口完整显示。
@@ -15,15 +15,15 @@ FastViewer 是一个 Windows 桌面查看器，用来直接打开手机 Camera �
 也可以直接双击启动脚本：
 
 ```bat
-dist\run_phone_camera_raw_viewer.bat
+dist\run_fastviewer.bat
 ```
 
 ## 仓库内容
 
 ```text
-src/PhoneCameraRawViewer.cs          C# WinForms 源码
-dist/PhoneCameraRawViewer.exe        已构建好的 x64 Windows 可执行文件
-dist/run_phone_camera_raw_viewer.bat 便捷启动脚本
+src/FastViewer.cs                     C# WinForms 源码
+dist/FastViewer.exe                   已构建好的 x64 Windows 可执行文件，已嵌入 FastViewer 图标
+dist/run_fastviewer.bat               便捷启动脚本
 ```
 
 ## 支持的文件名规则
@@ -82,6 +82,11 @@ w3280h2464
 - `.yuv420p`
 - `.p010`
 
+
+## 图标
+
+`assets/FastViewer.ico` 是程序图标，会在构建时通过 `/win32icon` 嵌入 exe。`assets/FastViewer_icon.png` 是同款 PNG 预览图，方便在 README 或发布页展示。
+
 ## 界面说明
 
 - 单图模式会渲染完整原图，并默认适配到窗口内完整显示。
@@ -96,9 +101,11 @@ w3280h2464
 在 Windows 上，如果存在 .NET Framework C# 编译器，可以执行：
 
 ```powershell
-C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:dist\PhoneCameraRawViewer.exe src\PhoneCameraRawViewer.cs
+C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:assets\FastViewer.ico /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:dist\FastViewer.exe src\FastViewer.cs
 ```
 
 ## License
 
 见仓库中的 `LICENSE`。
+
+

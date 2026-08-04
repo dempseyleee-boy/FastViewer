@@ -8,7 +8,7 @@ using System.Text.RegularExpressions;
 using System.Threading;
 using System.Windows.Forms;
 
-namespace PhoneCameraRawViewerV14
+namespace FastViewer
 {
 static class Program
 {
@@ -49,7 +49,7 @@ sealed class MainForm : Form
 
     public MainForm(string initial)
     {
-        Text="Phone Camera Raw/YUV/RGB Viewer v14"; Width=1380; Height=900; MinimumSize=new Size(1080,660);
+        Text="FastViewer"; Width=1380; Height=900; MinimumSize=new Size(1080,660); try{Icon=Icon.ExtractAssociatedIcon(Application.ExecutablePath);}catch{}
         BuildUi();
         if(!String.IsNullOrEmpty(initial)){ pathBox.Text=initial; ApplyFileName(initial); }
     }
@@ -73,7 +73,7 @@ sealed class MainForm : Form
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         leftShell.Controls.Add(left);
 
-        AddTitle(left,"Phone Camera Viewer","RAW / YUV / RGB full-frame viewer",0);
+        AddTitle(left,"FastViewer","Phone Camera RAW / YUV / RGB viewer",0);
         AddSection(left,"FILE",2);
         pathBox.Dock=DockStyle.Fill; StyleTextBox(pathBox); left.Controls.Add(pathBox,0,3); left.SetColumnSpan(pathBox,2);
         AddButton(left,"Browse / Multi",delegate{Browse();},0,4,1); AddButton(left,"Open",delegate{OpenFileNow();},1,4,1);
@@ -416,6 +416,7 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();}base.Dispose(disposing);}    
 }
 }
+
 
 
 
