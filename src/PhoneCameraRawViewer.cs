@@ -1,0 +1,426 @@
+﻿using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Windows.Forms;
+
+namespace PhoneCameraRawViewerV14
+{
+static class Program
+{
+    [STAThread]
+    static void Main(string[] args)
+    {
+        Application.EnableVisualStyles();
+        Application.SetCompatibleTextRenderingDefault(false);
+        Application.Run(new MainForm(args.Length > 0 ? args[0] : null));
+    }
+}
+
+sealed class Params
+{
+    public int W,H,Stride,Offset,Black,White,Pattern,View,Rotate,Bits;
+    public bool AutoLevels,Little,Lsb,Packed;
+    public string Format;
+}
+
+
+sealed class ViewerItem
+{
+    public string Path;
+    public Params P;
+    public Bitmap Bitmap;
+    public int Black,White;
+    public string Error;
+}
+sealed class MainForm : Form
+{
+    TextBox pathBox=new TextBox(), wBox=new TextBox(), hBox=new TextBox(), strideBox=new TextBox(), offsetBox=new TextBox();
+    TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
+    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox();
+    Panel imagePanel=new Panel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
+    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>();
+
+    string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"};
+
+    public MainForm(string initial)
+    {
+        Text="Phone Camera Raw/YUV/RGB Viewer v14"; Width=1380; Height=900; MinimumSize=new Size(1080,660);
+        BuildUi();
+        if(!String.IsNullOrEmpty(initial)){ pathBox.Text=initial; ApplyFileName(initial); }
+    }
+
+    void BuildUi()
+    {
+        BackColor=Color.FromArgb(15,17,21);
+        ForeColor=Color.FromArgb(231,236,244);
+        Font=new Font("Segoe UI",9F,FontStyle.Regular,GraphicsUnit.Point);
+
+        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,BackColor=Color.FromArgb(15,17,21),Padding=new Padding(12)};
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,350));
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        Controls.Add(root);
+
+        var leftShell=new Panel{Dock=DockStyle.Fill,AutoScroll=true,BackColor=Color.FromArgb(24,27,34),Padding=new Padding(16)};
+        root.Controls.Add(leftShell,0,0);
+
+        var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=30,BackColor=Color.FromArgb(24,27,34)};
+        left.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,108));
+        left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
+        leftShell.Controls.Add(left);
+
+        AddTitle(left,"Phone Camera Viewer","RAW / YUV / RGB full-frame viewer",0);
+        AddSection(left,"FILE",2);
+        pathBox.Dock=DockStyle.Fill; StyleTextBox(pathBox); left.Controls.Add(pathBox,0,3); left.SetColumnSpan(pathBox,2);
+        AddButton(left,"Browse / Multi",delegate{Browse();},0,4,1); AddButton(left,"Open",delegate{OpenFileNow();},1,4,1);
+
+        AddSection(left,"FRAME",6);
+        AddRow(left,"Width",wBox,7,"4096"); AddRow(left,"Height",hBox,8,"3072"); AddRow(left,"Stride",strideBox,9,""); AddRow(left,"Offset",offsetBox,10,"0");
+
+        AddSection(left,"TONE",12);
+        AddRow(left,"Black",blackBox,13,"auto"); AddRow(left,"White",whiteBox,14,"auto"); AddRow(left,"Gamma",gammaBox,15,"2.2");
+
+        AddSection(left,"FORMAT",17);
+        fmtBox.DropDownStyle=ComboBoxStyle.DropDownList; fmtBox.Items.AddRange(formats); fmtBox.SelectedIndex=5; AddCombo(left,"Format",fmtBox,18);
+        endianBox.DropDownStyle=ComboBoxStyle.DropDownList; endianBox.Items.AddRange(new object[]{"Little Endian","Big Endian"}); endianBox.SelectedIndex=0; AddCombo(left,"Endian",endianBox,19);
+        alignBox.DropDownStyle=ComboBoxStyle.DropDownList; alignBox.Items.AddRange(new object[]{"LSB aligned","MSB aligned"}); alignBox.SelectedIndex=0; AddCombo(left,"Bits",alignBox,20);
+        patternBox.DropDownStyle=ComboBoxStyle.DropDownList; patternBox.Items.AddRange(new object[]{"GRBG","RGGB","BGGR","GBRG"}); patternBox.SelectedIndex=0; AddCombo(left,"Bayer",patternBox,21);
+        viewBox.DropDownStyle=ComboBoxStyle.DropDownList; viewBox.Items.AddRange(new object[]{"Color","Bayer gray","Bayer site RGB"}); viewBox.SelectedIndex=0; AddCombo(left,"View",viewBox,22);
+        rotBox.DropDownStyle=ComboBoxStyle.DropDownList; rotBox.Items.AddRange(new object[]{"0","90","180","270"}); rotBox.SelectedIndex=0; AddCombo(left,"Rotate",rotBox,23);
+
+        AddSection(left,"VIEW",25);
+        AddButton(left,"Fit Window",delegate{FitWindow();},0,26,2);
+        AddButton(left,"Refresh",delegate{RefreshPreview();},0,27,1); AddButton(left,"Export BMP",delegate{ExportBmp();},1,27,1);
+
+        var hint=new Label{Text="Filename suffix is case-insensitive\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nMulti-select files in Browse\r\nCtrl + mouse wheel = zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,14,0,0),ForeColor=Color.FromArgb(144,153,166)};
+        left.Controls.Add(hint,0,29); left.SetColumnSpan(hint,2);
+
+        var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=Color.FromArgb(15,17,21),Padding=new Padding(14,0,0,0)};
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute,42));
+        right.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute,36));
+        root.Controls.Add(right,1,0);
+
+        var header=new Label{Text="Canvas",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI Semibold",13F,FontStyle.Bold),ForeColor=Color.FromArgb(238,242,248),Padding=new Padding(2,0,0,0)};
+        right.Controls.Add(header,0,0);
+
+        var viewerFrame=new Panel{Dock=DockStyle.Fill,BackColor=Color.FromArgb(10,12,16),Padding=new Padding(12)};
+        right.Controls.Add(viewerFrame,0,1);
+        imagePanel.Dock=DockStyle.Fill; imagePanel.AutoScroll=true; imagePanel.TabStop=true; imagePanel.BackColor=Color.FromArgb(8,10,14); imagePanel.BorderStyle=BorderStyle.FixedSingle; imagePanel.MouseEnter+=delegate{imagePanel.Focus();}; imagePanel.MouseWheel+=ImageWheel; imagePanel.Resize+=delegate{if(multiMode)LayoutGallery();}; viewerFrame.Controls.Add(imagePanel);
+        pic.Location=new Point(0,0); pic.SizeMode=PictureBoxSizeMode.StretchImage; pic.BackColor=Color.FromArgb(8,10,14); pic.MouseEnter+=delegate{imagePanel.Focus();}; pic.MouseWheel+=ImageWheel; gallery.MouseEnter+=delegate{imagePanel.Focus();}; gallery.MouseWheel+=ImageWheel; imagePanel.Controls.Add(pic);
+
+        status.Dock=DockStyle.Fill; status.TextAlign=ContentAlignment.MiddleLeft; status.Padding=new Padding(12,0,0,0); status.BackColor=Color.FromArgb(24,27,34); status.ForeColor=Color.FromArgb(196,204,216); status.Text="Open a phone camera RAW/YUV/RGB file."; right.Controls.Add(status,0,2);
+    }
+
+    void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=64,BackColor=Color.FromArgb(24,27,34)};var a=new Label{Text=title,Dock=DockStyle.Top,Height=30,Font=new Font("Segoe UI Semibold",15F,FontStyle.Bold),ForeColor=Color.White};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=24,ForeColor=Color.FromArgb(142,153,170)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
+    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=30,Padding=new Padding(0,12,0,0),Font=new Font("Segoe UI Semibold",8F,FontStyle.Bold),ForeColor=Color.FromArgb(100,181,246)};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
+    void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(196,204,216)}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
+    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(196,204,216),Margin=new Padding(0,4,8,4)}; t.Controls.Add(l,0,r); b.Text=v; b.Dock=DockStyle.Fill; b.Margin=new Padding(0,3,0,3); StyleTextBox(b); t.Controls.Add(b,1,r);}    
+    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(196,204,216),Margin=new Padding(0,4,8,4)}; t.Controls.Add(l,0,r); b.Dock=DockStyle.Fill; b.Margin=new Padding(0,3,0,3); StyleCombo(b); t.Controls.Add(b,1,r);}    
+    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new Button{Text=s,Dock=DockStyle.Fill,Height=34,Margin=new Padding(c==0?0:5,4,c==0?5:0,4),Cursor=Cursors.Hand}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
+    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.FixedSingle;b.BackColor=Color.FromArgb(34,38,48);b.ForeColor=Color.FromArgb(235,240,247);}
+    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.FromArgb(34,38,48);b.ForeColor=Color.FromArgb(235,240,247);}
+    void StyleButton(Button b,bool primary){b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(67,76,94);b.BackColor=primary?Color.FromArgb(0,122,204):Color.FromArgb(35,40,50);b.ForeColor=Color.White;}
+
+    void Browse()
+    {
+        using(var d=new OpenFileDialog())
+        {
+            d.Title="Open one or more phone camera files";
+            d.Multiselect=true;
+            d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.yuv;*.bin;*.dat|All files|*.*";
+            if(d.ShowDialog(this)==DialogResult.OK){if(d.FileNames.Length>1)OpenMany(d.FileNames);else{pathBox.Text=d.FileName; ApplyFileName(d.FileName);}}        
+        }
+    }
+
+    void ApplyFileName(string path)
+    {
+        int ww,hh; if(TryDims(path,out ww,out hh)){wBox.Text=ww.ToString(); hBox.Text=hh.ToString();}
+        string ext=Path.GetExtension(path).ToLowerInvariant();
+        var m=Regex.Match(ext,@"^\.raw(8|10|12|14|16)_(rggb|grbg|gbrg|bggr)_(packed|16b|8b)$",RegexOptions.IgnoreCase);
+        if(m.Success)
+        {
+            string bits=m.Groups[1].Value, pat=m.Groups[2].Value.ToUpperInvariant(), store=m.Groups[3].Value.ToUpperInvariant();
+            Select(fmtBox,"RAW"+bits+"_"+store); Select(patternBox,pat); if(store=="16B"||store=="8B")alignBox.SelectedIndex=0; SetDefaultStride(); status.Text="Detected "+ext; return;
+        }
+        string f=ext.Length>1?ext.Substring(1).ToUpperInvariant():"";
+        if(f=="RGB")f="RGB24"; if(f=="BGR")f="BGR24"; if(f=="RGBA")f="RGBA32"; if(f=="BGRA")f="BGRA32";
+        if(Select(fmtBox,f)){SetDefaultStride(); status.Text="Detected "+ext;}
+    }
+
+    static bool TryDims(string path,out int w,out int h)
+    {
+        string n=Path.GetFileName(path); string[] ps={@"(?<!\d)(\d{2,5})\s*[xX]\s*(\d{2,5})(?!\d)",@"(?<!\d)w\s*(\d{2,5})\s*h\s*(\d{2,5})(?!\d)",@"(?<!\d)(\d{2,5})\s*[_-]\s*(\d{2,5})(?!\d)"};
+        foreach(string p in ps){var m=Regex.Match(n,p,RegexOptions.IgnoreCase); if(m.Success){w=Int32.Parse(m.Groups[1].Value); h=Int32.Parse(m.Groups[2].Value); if(w>=16&&h>=16&&w<=20000&&h<=20000)return true;}}
+        w=h=0; return false;
+    }
+
+    static bool Select(ComboBox b,string s){for(int i=0;i<b.Items.Count;i++)if(String.Equals(b.Items[i].ToString(),s,StringComparison.OrdinalIgnoreCase)){b.SelectedIndex=i;return true;}return false;}
+
+    void AutoStrideIfEmpty(){ if(String.IsNullOrWhiteSpace(strideBox.Text))SetDefaultStride();}
+    void SetDefaultStride(){int w;if(Int32.TryParse(wBox.Text,out w))strideBox.Text=DefaultStride(w,Format()).ToString();}
+    string Format(){return fmtBox.SelectedItem==null?"RAW14_16B":fmtBox.SelectedItem.ToString().ToUpperInvariant();}
+    static int DefaultStride(int w,string f){if(f=="RAW8_8B")return w;if(f=="RAW10_PACKED")return ((w+3)/4)*5;if(f=="RAW12_PACKED")return ((w+1)/2)*3;if(f=="RAW14_PACKED")return (w*14+7)/8;if(f=="RGB24"||f=="BGR24")return w*3;if(f=="RGBA32"||f=="BGRA32")return w*4;if(f=="RGB48"||f=="BGR48")return w*6;if(f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P")return w;return w*2;}
+
+    Params ReadParams()
+    {
+        var q=new Params(); q.W=Int32.Parse(wBox.Text.Trim()); q.H=Int32.Parse(hBox.Text.Trim()); q.Format=Format();
+        string st=strideBox.Text.Trim(); q.Stride=String.IsNullOrWhiteSpace(st)?DefaultStride(q.W,q.Format):Int32.Parse(st);
+        q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim()); q.Little=endianBox.SelectedIndex==0; q.Lsb=alignBox.SelectedIndex==0;
+        q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90;
+        q.Packed=q.Format.EndsWith("PACKED"); q.Bits=8; var m=Regex.Match(q.Format,@"RAW(\d+)_"); if(m.Success)q.Bits=Int32.Parse(m.Groups[1].Value);
+        string b=blackBox.Text.Trim().ToLowerInvariant(), w=whiteBox.Text.Trim().ToLowerInvariant(); q.AutoLevels=b==""||w==""||b=="auto"||w=="auto"; q.Black=q.AutoLevels?0:Int32.Parse(b); q.White=q.AutoLevels?MaxRaw(q.Bits):Int32.Parse(w); double gv; if(!Double.TryParse(gammaBox.Text,out gv))gv=2.2; gammaValue=gv;
+        if(q.W<=0||q.H<=0)throw new Exception("Width/height must be positive."); if(q.Stride<=0)throw new Exception("Stride must be positive or empty."); if(q.Offset<0)throw new Exception("Offset must be >=0."); return q;
+    }
+    static int MaxRaw(int bits){return bits>=16?65535:((1<<bits)-1);}    
+    bool IsRaw(){return p.Format.StartsWith("RAW");}
+    bool IsRgb(){return p.Format=="RGB24"||p.Format=="BGR24"||p.Format=="RGBA32"||p.Format=="BGRA32"||p.Format=="RGB48"||p.Format=="BGR48";}
+    bool IsYuv(){return !IsRaw()&&!IsRgb();}
+    long ExpectedBytes(Params q){if(q.Format=="P010")return (long)q.Offset+(long)q.Stride*q.H*3/2; if(q.Format=="NV21"||q.Format=="NV12"||q.Format=="I420"||q.Format=="YV12"||q.Format=="YUV420P")return (long)q.Offset+(long)q.Stride*q.H*3/2; return (long)q.Offset+(long)q.Stride*q.H;}
+
+    void OpenFileNow()
+    {
+        try
+        {
+            if(String.IsNullOrWhiteSpace(pathBox.Text))Browse(); if(String.IsNullOrWhiteSpace(pathBox.Text))return; openedPath=pathBox.Text.Trim(); ApplyFileName(openedPath); p=ReadParams(); openedPaths=new string[]{openedPath}; ShowSingleMode();
+            long expected=ExpectedBytes(p), len=new FileInfo(openedPath).Length; if(len<expected)throw new Exception("File too small: "+len+" bytes, expected at least "+expected+".");
+            status.Text="Reading whole file..."; ThreadPool.QueueUserWorkItem(delegate{try{byte[] bytes=File.ReadAllBytes(openedPath); BeginInvoke((Action)delegate{data=bytes; EstimateLevels(); BuildStretchLut(); Render(true);});}catch(Exception ex){ShowErr(ex);}});
+        }catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+    }
+    void RefreshPreview(){try{if(multiMode&&openedPaths!=null&&openedPaths.Length>1){OpenMany(openedPaths);return;} p=ReadParams(); if(data==null){OpenFileNow();return;} EstimateLevels(); BuildStretchLut(); Render(true);}catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}}
+    void FitWindow(){if(multiMode){galleryZoom=1.0;LayoutGallery();UpdateStatus();return;} if(current!=null){zoom=FitZoomFor(current);ApplyZoom();imagePanel.AutoScrollPosition=new Point(0,0);UpdateStatus();}else RefreshPreview();}
+
+
+    void ShowSingleMode()
+    {
+        multiMode=false;
+        imagePanel.AutoScroll=true;
+        if(pic.Parent!=imagePanel){imagePanel.Controls.Clear();imagePanel.Controls.Add(pic);}        
+    }
+    void ShowMultiStart()
+    {
+        multiMode=true;
+        if(current!=null){current.Dispose();current=null;}
+        pic.Image=null;
+        foreach(Bitmap b in galleryBitmaps)b.Dispose();
+        galleryBitmaps.Clear();
+        gallery.Controls.Clear();
+        galleryZoom=1.0;
+        imagePanel.AutoScroll=false;
+        imagePanel.Controls.Clear();
+        gallery.Dock=DockStyle.Fill;
+        gallery.AutoScroll=true;
+        gallery.WrapContents=true;
+        gallery.FlowDirection=FlowDirection.LeftToRight;
+        gallery.BackColor=Color.FromArgb(8,10,14);
+        gallery.Padding=new Padding(10);
+        imagePanel.Controls.Add(gallery);
+    }
+    Params ParamsForFile(string path)
+    {
+        pathBox.Text=path;
+        ApplyFileName(path);
+        return ReadParams();
+    }
+    void OpenMany(string[] paths)
+    {
+        try
+        {
+            if(paths==null||paths.Length==0)return;
+            if(paths.Length==1){pathBox.Text=paths[0];ApplyFileName(paths[0]);OpenFileNow();return;}
+            var jobs=new List<ViewerItem>();
+            foreach(string fp in paths)
+            {
+                Params q=ParamsForFile(fp);
+                long expected=ExpectedBytes(q), len=new FileInfo(fp).Length;
+                if(len<expected)throw new Exception(Path.GetFileName(fp)+" too small: "+len+" bytes, expected at least "+expected+".");
+                jobs.Add(new ViewerItem{Path=fp,P=q});
+            }
+            openedPaths=paths; openedPath=paths[paths.Length-1]; p=jobs[jobs.Count-1].P; pathBox.Text=paths.Length+" files selected";
+            ShowMultiStart();
+            status.Text="Rendering 0 / "+jobs.Count+" images...";
+            ThreadPool.QueueUserWorkItem(delegate{
+                int done=0;
+                foreach(ViewerItem job0 in jobs)
+                {
+                    ViewerItem job=job0;
+                    try
+                    {
+                        byte[] bytes=File.ReadAllBytes(job.Path);
+                        p=job.P; data=bytes; EstimateLevels(); job.Black=autoBlack; job.White=autoWhite; BuildStretchLut(); job.Bitmap=BuildBitmap(true);
+                        int n=++done;
+                        BeginInvoke((Action)delegate{AddImageCard(job,n,jobs.Count);});
+                    }
+                    catch(Exception ex)
+                    {
+                        job.Error=ex.Message; int n=++done;
+                        BeginInvoke((Action)delegate{AddErrorCard(job,n,jobs.Count);});
+                    }
+                }
+                BeginInvoke((Action)delegate{UpdateStatus();});
+            });
+        }
+        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+    }
+    void AddImageCard(ViewerItem job,int done,int total)
+    {
+        galleryBitmaps.Add(job.Bitmap);
+        var card=new TableLayoutPanel{ColumnCount=1,RowCount=2,BackColor=Color.FromArgb(24,27,34),Margin=new Padding(8),Padding=new Padding(8)};
+        card.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
+        card.RowStyles.Add(new RowStyle(SizeType.Percent,100));
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(220,226,236),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true};
+        var pb=new PictureBox{Dock=DockStyle.Fill,Image=job.Bitmap,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.FromArgb(10,12,16)};
+        card.Controls.Add(cap,0,0); card.Controls.Add(pb,0,1); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
+    }
+    void AddErrorCard(ViewerItem job,int done,int total)
+    {
+        var card=new TableLayoutPanel{ColumnCount=1,RowCount=1,BackColor=Color.FromArgb(53,32,37),Margin=new Padding(8),Padding=new Padding(10)};
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\nFAILED: "+job.Error,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(255,205,210),TextAlign=ContentAlignment.MiddleLeft};
+        card.Controls.Add(cap,0,0); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
+    }
+    void LayoutGallery()
+    {
+        if(!multiMode||gallery==null)return;
+        int vw=Math.Max(360,gallery.ClientSize.Width-28);
+        int cols=vw>=1500?3:(vw>=860?2:1);
+        int cw=Math.Max(320,(int)(((vw-(cols+1)*18)/(double)cols)*galleryZoom));
+        int ch=Math.Max(280,(int)(cw*0.72)+58);
+        foreach(Control c in gallery.Controls){c.Width=cw;c.Height=ch;}
+    }
+    ushort RawAt(int x,int y)
+    {
+        if(x<0)x=0; else if(x>=p.W)x=p.W-1; if(y<0)y=0; else if(y>=p.H)y=p.H-1; int row=p.Offset+y*p.Stride, val;
+        if(p.Packed) val=ReadPacked(row,x,p.Bits); else if(p.Bits==8) val=data[row+x]; else {int off=row+x*2; val=p.Little?(data[off]|(data[off+1]<<8)):((data[off]<<8)|data[off+1]); if(p.Bits<16){int mask=(1<<p.Bits)-1; val=p.Lsb?(val&mask):(val>>(16-p.Bits));}}
+        return (ushort)val;
+    }
+    int ReadPacked(int row,int x,int bits)
+    {
+        if(bits==10){int g=x/4,i=x&3,o=row+g*5; if(i==0)return data[o]|((data[o+4]&3)<<8); if(i==1)return data[o+1]|((data[o+4]&12)<<6); if(i==2)return data[o+2]|((data[o+4]&48)<<4); return data[o+3]|((data[o+4]&192)<<2);}        
+        if(bits==12){int g=x/2,i=x&1,o=row+g*3; if(i==0)return data[o]|((data[o+2]&15)<<8); return data[o+1]|((data[o+2]&240)<<4);}        
+        int bit=x*bits, bo=row+bit/8, sh=bit&7, word=data[bo]|(data[bo+1]<<8)|(data[bo+2]<<16); return (word>>sh)&((1<<bits)-1);
+    }
+    char BayerSite(int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(p.Pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
+    void Demosaic(int x,int y,out int r,out int g,out int b)
+    {
+        char c=BayerSite(x,y); int v=RawAt(x,y); if(c=='R'){r=v;g=(RawAt(x-1,y)+RawAt(x+1,y)+RawAt(x,y-1)+RawAt(x,y+1))>>2;b=(RawAt(x-1,y-1)+RawAt(x+1,y-1)+RawAt(x-1,y+1)+RawAt(x+1,y+1))>>2;}
+        else if(c=='B'){b=v;g=(RawAt(x-1,y)+RawAt(x+1,y)+RawAt(x,y-1)+RawAt(x,y+1))>>2;r=(RawAt(x-1,y-1)+RawAt(x+1,y-1)+RawAt(x-1,y+1)+RawAt(x+1,y+1))>>2;}
+        else{g=v; if(BayerSite(x-1,y)=='R'){r=(RawAt(x-1,y)+RawAt(x+1,y))>>1;b=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}else{b=(RawAt(x-1,y)+RawAt(x+1,y))>>1;r=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}}
+    }
+
+    void RgbAt(int x,int y,out byte r,out byte g,out byte b)
+    {
+        if(p.Format=="RGB48"||p.Format=="BGR48")
+        {
+            int o=p.Offset+y*p.Stride+x*6;
+            byte c0=data[o+1], c1=data[o+3], c2=data[o+5];
+            if(p.Format=="RGB48"){r=c0;g=c1;b=c2;}else{b=c0;g=c1;r=c2;}
+            return;
+        }
+        int ps=(p.Format=="RGB24"||p.Format=="BGR24")?3:4; int off=p.Offset+y*p.Stride+x*ps; byte c0b=data[off],c1b=data[off+1],c2b=data[off+2];
+        if(p.Format=="RGB24"||p.Format=="RGBA32"){r=c0b;g=c1b;b=c2b;}else{b=c0b;g=c1b;r=c2b;}
+    }
+    static byte Clamp(int v){return (byte)(v<0?0:(v>255?255:v));}
+    void YuvAt(int x,int y,out byte rr,out byte gg,out byte bb)
+    {
+        int Y,U=128,V=128; string f=p.Format;
+        if(f=="P010")
+        {
+            int yo=p.Offset+y*p.Stride+x*2; Y=(data[yo]|(data[yo+1]<<8))>>8; int uvb=p.Offset+p.Stride*p.H; int uvo=uvb+(y/2)*p.Stride+(x/2)*4; U=(data[uvo]|(data[uvo+1]<<8))>>8; V=(data[uvo+2]|(data[uvo+3]<<8))>>8;
+        }
+        else
+        {
+            Y=data[p.Offset+y*p.Stride+x]; int uvb=p.Offset+p.Stride*p.H;
+            if(f=="NV12"||f=="NV21"){int uvo=uvb+(y/2)*p.Stride+(x/2)*2; if(f=="NV12"){U=data[uvo];V=data[uvo+1];}else{V=data[uvo];U=data[uvo+1];}}
+            else{int cs=p.Stride/2, ch=(p.H+1)/2, off=(y/2)*cs+(x/2), size=cs*ch; if(f=="YV12"){V=data[uvb+off];U=data[uvb+size+off];}else{U=data[uvb+off];V=data[uvb+size+off];}}
+        }
+        int c=Y-16,d=U-128,e=V-128; rr=Clamp((298*c+409*e+128)>>8); gg=Clamp((298*c-100*d-208*e+128)>>8); bb=Clamp((298*c+516*d+128)>>8);
+    }
+
+    void FastDemosaic2x2(int x,int y,out int r,out int g,out int b)
+    {
+        int bx=x&~1, by=y&~1, rs=0,gs=0,bs=0,rc=0,gc=0,bc=0;
+        for(int yy=0;yy<2;yy++)for(int xx=0;xx<2;xx++)
+        {
+            int sx=bx+xx, sy=by+yy, v=RawAt(sx,sy); char c=BayerSite(sx,sy);
+            if(c=='R'){rs+=v;rc++;} else if(c=='G'){gs+=v;gc++;} else {bs+=v;bc++;}
+        }
+        r=rc>0?rs/rc:RawAt(x,y); g=gc>0?gs/gc:RawAt(x,y); b=bc>0?bs/bc:RawAt(x,y);
+    }
+    void EstimateLevels()
+    {
+        if(!IsRaw()){autoBlack=0;autoWhite=255;return;}
+        if(!p.AutoLevels){autoBlack=p.Black;autoWhite=p.White;if(autoWhite<=autoBlack)autoWhite=autoBlack+1;return;}
+        int max=MaxRaw(p.Bits); int[] hist=new int[max+1];
+        int stepX=Math.Max(1,p.W/512), stepY=Math.Max(1,p.H/512), count=0;
+        for(int y=0;y<p.H;y+=stepY)for(int x=0;x<p.W;x+=stepX){hist[RawAt(x,y)]++;count++;}
+        long lo=Math.Max(1,count/100), hi=Math.Max(1,count*995/1000), acc=0; autoBlack=0; autoWhite=max;
+        for(int i=0;i<hist.Length;i++){acc+=hist[i]; if(acc>=lo){autoBlack=i;break;}}
+        acc=0; for(int i=0;i<hist.Length;i++){acc+=hist[i]; if(acc>=hi){autoWhite=i;break;}}
+        if(autoWhite<=autoBlack)autoWhite=autoBlack+1;
+    }
+    void BuildStretchLut()
+    {
+        int max=IsRaw()?MaxRaw(p.Bits):255;
+        stretchLut=new byte[max+1];
+        double gamma=gammaValue;
+        double invGamma=gamma>0?1.0/gamma:1.0;
+        double denom=Math.Max(1,autoWhite-autoBlack);
+        for(int i=0;i<stretchLut.Length;i++)
+        {
+            double n=(i-autoBlack)/denom;
+            if(n<0)n=0; else if(n>1)n=1;
+            if(gamma>0)n=Math.Pow(n,invGamma);
+            stretchLut[i]=Clamp((int)(n*255+0.5));
+        }
+    }
+    byte Stretch(int v){if(stretchLut!=null){if(v<0)v=0;else if(v>=stretchLut.Length)v=stretchLut.Length-1;return stretchLut[v];}return Clamp(v);}    
+
+    Bitmap BuildBitmap(bool full)
+    {
+        int scale=1; int ow=p.W, oh=p.H;
+        Bitmap bmp=new Bitmap(ow,oh,PixelFormat.Format24bppRgb); BitmapData bd=bmp.LockBits(new Rectangle(0,0,ow,oh),ImageLockMode.WriteOnly,PixelFormat.Format24bppRgb); int bs=bd.Stride; byte[] pix=new byte[bs*oh];
+        for(int oy=0;oy<oh;oy++){int sy=Math.Min(p.H-1,oy*scale), dst=oy*bs; for(int ox=0;ox<ow;ox++){int sx=Math.Min(p.W-1,ox*scale), pos=dst+ox*3; byte r,g,b;
+            if(IsRgb())RgbAt(sx,sy,out r,out g,out b); else if(IsYuv())YuvAt(sx,sy,out r,out g,out b); else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
+        Marshal.Copy(pix,0,bd.Scan0,pix.Length); bmp.UnlockBits(bd); RotateBmp(bmp); return bmp;
+    }
+    void RotateBmp(Bitmap b){if(p.Rotate==90)b.RotateFlip(RotateFlipType.Rotate90FlipNone);else if(p.Rotate==180)b.RotateFlip(RotateFlipType.Rotate180FlipNone);else if(p.Rotate==270)b.RotateFlip(RotateFlipType.Rotate270FlipNone);}    
+    void Render(bool fitToWindow)
+    {
+        if(data==null)return; status.Text="Rendering full image..."; ThreadPool.QueueUserWorkItem(delegate{try{Bitmap bmp=BuildBitmap(true); BeginInvoke((Action)delegate{ShowSingleMode(); if(current!=null)current.Dispose(); current=bmp; zoom=fitToWindow?FitZoomFor(current):1.0; pic.Image=current; ApplyZoom(); imagePanel.AutoScrollPosition=new Point(0,0); UpdateStatus();});}catch(Exception ex){ShowErr(ex);}});
+    }
+    void ImageWheel(object sender,MouseEventArgs e)
+    {
+        if((ModifierKeys&Keys.Control)==0)return; if(multiMode){galleryZoom=Math.Max(0.55,Math.Min(2.4,galleryZoom*(e.Delta>0?1.15:0.87)));LayoutGallery();UpdateStatus();return;} if(current==null)return; double old=zoom; zoom=Math.Max(0.05,Math.Min(16.0,zoom*(e.Delta>0?1.25:0.80))); if(Math.Abs(old-zoom)<0.0001)return;
+        Point m=imagePanel.PointToClient(Cursor.Position); int sx=-imagePanel.AutoScrollPosition.X, sy=-imagePanel.AutoScrollPosition.Y; double ix=(sx+m.X)/old, iy=(sy+m.Y)/old; ApplyZoom(); imagePanel.AutoScrollPosition=new Point(Math.Max(0,(int)Math.Round(ix*zoom-m.X)),Math.Max(0,(int)Math.Round(iy*zoom-m.Y))); UpdateStatus();
+    }
+    double FitZoomFor(Bitmap bmp)
+    {
+        if(bmp==null)return 1.0;
+        int vw=Math.Max(1,imagePanel.ClientSize.Width-4), vh=Math.Max(1,imagePanel.ClientSize.Height-4);
+        double zx=vw/(double)bmp.Width, zy=vh/(double)bmp.Height;
+        double z=Math.Min(zx,zy);
+        if(Double.IsNaN(z)||Double.IsInfinity(z)||z<=0)z=1.0;
+        return Math.Max(0.01,Math.Min(16.0,z));
+    }
+    void ApplyZoom(){if(current==null)return; pic.Size=new Size(Math.Max(1,(int)Math.Round(current.Width*zoom)),Math.Max(1,(int)Math.Round(current.Height*zoom)));}
+    void UpdateStatus(){if(multiMode){status.Text="Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%";return;} if(current==null||p==null)return; status.Text=Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite;}
+    void ExportBmp()
+    {
+        if(multiMode){MessageBox.Show(this,"Multi-image mode does not batch export yet. Open one file to export BMP.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} if(data==null){MessageBox.Show(this,"Open a file first.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} using(var d=new SaveFileDialog()){d.Title="Export BMP";d.Filter="BMP image|*.bmp|All files|*.*";d.FileName=Path.GetFileNameWithoutExtension(openedPath)+".bmp"; if(d.ShowDialog(this)!=DialogResult.OK)return; status.Text="Exporting BMP..."; ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); b.Save(d.FileName,ImageFormat.Bmp); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});}    
+    }
+    void ShowErr(Exception ex){BeginInvoke((Action)delegate{status.Text="Failed.";MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);});}
+    protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();}base.Dispose(disposing);}    
+}
+}
+
+
+
+
+
+
+
+
