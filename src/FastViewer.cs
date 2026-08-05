@@ -17,6 +17,11 @@ static class Program
     [STAThread]
     static void Main(string[] args)
     {
+        if(args.Length>0 && String.Equals(args[0],"--self-test",StringComparison.OrdinalIgnoreCase))
+        {
+            Environment.Exit(MainForm.RunSelfTest(args));
+            return;
+        }
         Application.EnableVisualStyles();
         Application.SetCompatibleTextRenderingDefault(false);
         Application.Run(new MainForm(args.Length > 0 ? args[0] : null));
@@ -356,7 +361,7 @@ sealed class MainForm : Form
     bool IsRaw(){return p.Format.StartsWith("RAW");}
     bool IsRgb(){return p.Format=="RGB24"||p.Format=="BGR24"||p.Format=="RGBA32"||p.Format=="BGRA32"||p.Format=="RGB48"||p.Format=="BGR48";}
     bool IsYuv(){return !IsRaw()&&!IsRgb();}
-    long ExpectedBytes(Params q){if(q.Format=="P010")return (long)q.Offset+(long)q.Stride*q.H*3/2; if(q.Format=="NV21"||q.Format=="NV12"||q.Format=="I420"||q.Format=="YV12"||q.Format=="YUV420P")return (long)q.Offset+(long)q.Stride*q.H*3/2; return (long)q.Offset+(long)q.Stride*q.H;}
+    static long ExpectedBytes(Params q){if(q.Format=="P010")return (long)q.Offset+(long)q.Stride*q.H*3/2; if(q.Format=="NV21"||q.Format=="NV12"||q.Format=="I420"||q.Format=="YV12"||q.Format=="YUV420P")return (long)q.Offset+(long)q.Stride*q.H*3/2; return (long)q.Offset+(long)q.Stride*q.H;}
 
     void OpenFileNow()
     {
@@ -467,17 +472,18 @@ sealed class MainForm : Form
         int ch=Math.Max(280,(int)(cw*0.72)+58);
         foreach(Control c in gallery.Controls){c.Width=cw;c.Height=ch;}
     }
-    ushort RawAt(int x,int y)
+    ushort RawAt(int x,int y){return RawAtCore(data,p,x,y);}
+    static ushort RawAtCore(byte[] source,Params q,int x,int y)
     {
-        if(x<0)x=0; else if(x>=p.W)x=p.W-1; if(y<0)y=0; else if(y>=p.H)y=p.H-1; int row=p.Offset+y*p.Stride, val;
-        if(p.Packed) val=ReadPacked(row,x,p.Bits); else if(p.Bits==8) val=data[row+x]; else {int off=row+x*2; val=p.Little?(data[off]|(data[off+1]<<8)):((data[off]<<8)|data[off+1]); if(p.Bits<16){int mask=(1<<p.Bits)-1; val=p.Lsb?(val&mask):(val>>(16-p.Bits));}}
+        if(x<0)x=0; else if(x>=q.W)x=q.W-1; if(y<0)y=0; else if(y>=q.H)y=q.H-1; int row=q.Offset+y*q.Stride, val;
+        if(q.Packed) val=ReadPackedCore(source,row,x,q.Bits); else if(q.Bits==8) val=source[row+x]; else {int off=row+x*2; val=q.Little?(source[off]|(source[off+1]<<8)):((source[off]<<8)|source[off+1]); if(q.Bits<16){int mask=(1<<q.Bits)-1; val=q.Lsb?(val&mask):(val>>(16-q.Bits));}}
         return (ushort)val;
     }
-    int ReadPacked(int row,int x,int bits)
+    static int ReadPackedCore(byte[] source,int row,int x,int bits)
     {
-        if(bits==10){int g=x/4,i=x&3,o=row+g*5; if(i==0)return data[o]|((data[o+4]&3)<<8); if(i==1)return data[o+1]|((data[o+4]&12)<<6); if(i==2)return data[o+2]|((data[o+4]&48)<<4); return data[o+3]|((data[o+4]&192)<<2);}
-        if(bits==12){int g=x/2,i=x&1,o=row+g*3; if(i==0)return data[o]|((data[o+2]&15)<<8); return data[o+1]|((data[o+2]&240)<<4);}
-        int bit=x*bits, bo=row+bit/8, sh=bit&7, word=data[bo]|(data[bo+1]<<8)|(data[bo+2]<<16); return (word>>sh)&((1<<bits)-1);
+        if(bits==10){int g=x/4,i=x&3,o=row+g*5; if(i==0)return source[o]|((source[o+4]&3)<<8); if(i==1)return source[o+1]|((source[o+4]&12)<<6); if(i==2)return source[o+2]|((source[o+4]&48)<<4); return source[o+3]|((source[o+4]&192)<<2);}
+        if(bits==12){int g=x/2,i=x&1,o=row+g*3; if(i==0)return source[o]|((source[o+2]&15)<<8); return source[o+1]|((source[o+2]&240)<<4);}
+        int bit=x*bits, bo=row+bit/8, sh=bit&7, word=source[bo]|(source[bo+1]<<8)|(source[bo+2]<<16); return (word>>sh)&((1<<bits)-1);
     }
     char BayerSite(int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(p.Pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
     void Demosaic(int x,int y,out int r,out int g,out int b)
@@ -487,17 +493,18 @@ sealed class MainForm : Form
         else{g=v; if(BayerSite(x-1,y)=='R'){r=(RawAt(x-1,y)+RawAt(x+1,y))>>1;b=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}else{b=(RawAt(x-1,y)+RawAt(x+1,y))>>1;r=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}}
     }
 
-    void RgbAt(int x,int y,out byte r,out byte g,out byte b)
+    void RgbAt(int x,int y,out byte r,out byte g,out byte b){RgbAtCore(data,p,x,y,out r,out g,out b);}
+    static void RgbAtCore(byte[] source,Params q,int x,int y,out byte r,out byte g,out byte b)
     {
-        if(p.Format=="RGB48"||p.Format=="BGR48")
+        if(q.Format=="RGB48"||q.Format=="BGR48")
         {
-            int o=p.Offset+y*p.Stride+x*6;
-            int hi=p.Little?1:0; byte c0=data[o+hi], c1=data[o+2+hi], c2=data[o+4+hi];
-            if(p.Format=="RGB48"){r=c0;g=c1;b=c2;}else{b=c0;g=c1;r=c2;}
+            int o=q.Offset+y*q.Stride+x*6;
+            int hi=q.Little?1:0; byte c0=source[o+hi], c1=source[o+2+hi], c2=source[o+4+hi];
+            if(q.Format=="RGB48"){r=c0;g=c1;b=c2;}else{b=c0;g=c1;r=c2;}
             return;
         }
-        int ps=(p.Format=="RGB24"||p.Format=="BGR24")?3:4; int off=p.Offset+y*p.Stride+x*ps; byte c0b=data[off],c1b=data[off+1],c2b=data[off+2];
-        if(p.Format=="RGB24"||p.Format=="RGBA32"){r=c0b;g=c1b;b=c2b;}else{b=c0b;g=c1b;r=c2b;}
+        int ps=(q.Format=="RGB24"||q.Format=="BGR24")?3:4; int off=q.Offset+y*q.Stride+x*ps; byte c0b=source[off],c1b=source[off+1],c2b=source[off+2];
+        if(q.Format=="RGB24"||q.Format=="RGBA32"){r=c0b;g=c1b;b=c2b;}else{b=c0b;g=c1b;r=c2b;}
     }
     static byte Clamp(int v){return (byte)(v<0?0:(v>255?255:v));}
     void YuvAt(int x,int y,out byte rr,out byte gg,out byte bb)
@@ -763,13 +770,14 @@ sealed class MainForm : Form
         double gg=y-(kb*(2.0-2.0*kb)/kg)*u-(kr*(2.0-2.0*kr)/kg)*v;
         r=ClampD(rr);g=ClampD(gg);b=ClampD(bb);
     }
-    void RgbToYuv(int r,int g,int b,out int yv,out int uv,out int vv)
+    void RgbToYuv(int r,int g,int b,out int yv,out int uv,out int vv){RgbToYuvCore(r,g,b,YuvMatrixIndex(),YuvFullRange(),out yv,out uv,out vv);}
+    static void RgbToYuvCore(int r,int g,int b,int matrix,bool full,out int yv,out int uv,out int vv)
     {
-        double kr,kb;YuvCoeffs(YuvMatrixIndex(),out kr,out kb);double kg=1.0-kr-kb;
+        double kr,kb;YuvCoeffs(matrix,out kr,out kb);double kg=1.0-kr-kb;
         double y=kr*r+kg*g+kb*b;
         double u=(b-y)/(2.0-2.0*kb);
         double v=(r-y)/(2.0-2.0*kr);
-        if(YuvFullRange()){yv=ClampD(y);uv=ClampD(u+128);vv=ClampD(v+128);}
+        if(full){yv=ClampD(y);uv=ClampD(u+128);vv=ClampD(v+128);}
         else{yv=ClampD(16.0+219.0*y/255.0);uv=ClampD(128.0+224.0*u/255.0);vv=ClampD(128.0+224.0*v/255.0);}
     }
     static char BayerSiteForPattern(int pattern,int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
@@ -956,6 +964,120 @@ sealed class MainForm : Form
                 }
                 BeginInvoke((Action)delegate{status.Text="Exported "+galleryItems.Count+" "+kind+" files to "+folder;});
             }catch(Exception ex){ShowErr(ex);}});
+        }
+    }
+    public static int RunSelfTest(string[] args){return SelfTest.Run(args);}
+
+    static class SelfTest
+    {
+        static int passed, failed;
+        static StringBuilder report;
+
+        public static int Run(string[] args)
+        {
+            passed=0; failed=0; report=new StringBuilder();
+            report.AppendLine("FastViewer self-test");
+            report.AppendLine("UTC: "+DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"));
+            report.AppendLine();
+
+            Test("filename dimensions", TestFilenameDimensions);
+            Test("default stride and expected bytes", TestStrideAndExpectedBytes);
+            Test("YUV matrix/range round-trip", TestYuvRoundTrip);
+            Test("RAW14 16B alignment", TestRaw14Alignment);
+            Test("RAW14 packed bitstream", TestRaw14Packed);
+            Test("RGB48/BGR48 endian decode", TestRgb48Endian);
+
+            report.AppendLine();
+            report.AppendLine("Passed: "+passed);
+            report.AppendLine("Failed: "+failed);
+            string reportPath=args.Length>1?args[1]:Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"FastViewer.selftest.txt");
+            string dir=Path.GetDirectoryName(reportPath); if(!String.IsNullOrEmpty(dir))Directory.CreateDirectory(dir);
+            File.WriteAllText(reportPath,report.ToString(),Encoding.UTF8);
+            return failed==0?0:1;
+        }
+
+        static void Test(string name,Action body)
+        {
+            try{body(); passed++; report.AppendLine("[PASS] "+name);}
+            catch(Exception ex){failed++; report.AppendLine("[FAIL] "+name+": "+ex.Message);}
+        }
+        static void Eq(string label,int actual,int expected){if(actual!=expected)throw new Exception(label+" expected "+expected+", got "+actual);}
+        static void EqLong(string label,long actual,long expected){if(actual!=expected)throw new Exception(label+" expected "+expected+", got "+actual);}
+        static void EqBool(string label,bool actual,bool expected){if(actual!=expected)throw new Exception(label+" expected "+expected+", got "+actual);}
+        static void Near(string label,int actual,int expected,int tol){if(Math.Abs(actual-expected)>tol)throw new Exception(label+" expected near "+expected+", got "+actual);}
+        static void NearRgb(string label,byte r,byte g,byte b,int er,int eg,int eb,int tol){Near(label+" R",r,er,tol);Near(label+" G",g,eg,tol);Near(label+" B",b,eb,tol);}
+
+        static void TestFilenameDimensions()
+        {
+            int w,h;
+            EqBool("raw dims found",TryDims("20251217101_P12U_F_Face_20251217_211423_3280x2464_p_3280x2464_process_1.RAW14_GRBG_16B",out w,out h),true);
+            Eq("raw width",w,3280); Eq("raw height",h,2464);
+            EqBool("w/h dims found",TryDims("camera_w1920h1080.NV21",out w,out h),true);
+            Eq("w/h width",w,1920); Eq("w/h height",h,1080);
+        }
+
+        static void TestStrideAndExpectedBytes()
+        {
+            Eq("RAW14_16B stride",DefaultStride(8,"RAW14_16B"),16);
+            Eq("RAW14_PACKED stride",DefaultStride(8,"RAW14_PACKED"),14);
+            Eq("RGB48 stride",DefaultStride(8,"RGB48"),48);
+            Eq("NV21 stride",DefaultStride(8,"NV21"),8);
+            Params q=new Params{W=8,H=4,Format="NV21",Stride=8,Offset=7};
+            EqLong("NV21 expected bytes",ExpectedBytes(q),55);
+            q.Format="RGB48"; q.Stride=48; EqLong("RGB48 expected bytes",ExpectedBytes(q),199);
+        }
+
+        static void TestYuvRoundTrip()
+        {
+            int[] colors=new int[]{255,0,0,0,255,0,0,0,255,64,128,192};
+            for(int matrix=0;matrix<3;matrix++)
+            {
+                for(int full=0;full<2;full++)
+                {
+                    for(int i=0;i<colors.Length;i+=3)
+                    {
+                        int y,u,v; byte r,g,b;
+                        RgbToYuvCore(colors[i],colors[i+1],colors[i+2],matrix,full==1,out y,out u,out v);
+                        YuvToRgb(y,u,v,matrix,full==1,out r,out g,out b);
+                        NearRgb(YuvMatrixName(matrix)+" "+(full==1?"full":"limited"),r,g,b,colors[i],colors[i+1],colors[i+2],2);
+                    }
+                }
+            }
+            int y601,u601,v601,y709,u709,v709;
+            RgbToYuvCore(255,0,0,0,false,out y601,out u601,out v601);
+            RgbToYuvCore(255,0,0,1,false,out y709,out u709,out v709);
+            if(y601==y709)throw new Exception("BT.601 and BT.709 red luma should differ");
+        }
+
+        static void TestRaw14Alignment()
+        {
+            Params q=new Params{W=2,H=1,Stride=4,Offset=0,Format="RAW14_16B",Bits=14,Packed=false,Little=true,Lsb=true};
+            byte[] lsb=new byte[]{0x34,0x12,0x21,0x03};
+            Eq("RAW14 LSB x0",RawAtCore(lsb,q,0,0),0x1234); Eq("RAW14 LSB x1",RawAtCore(lsb,q,1,0),0x0321);
+            ushort value=0x1234; ushort msbWord=(ushort)(value<<2);
+            q.Lsb=false; q.Little=true; byte[] msbLittle=new byte[]{(byte)(msbWord&255),(byte)(msbWord>>8),0,0};
+            Eq("RAW14 MSB little",RawAtCore(msbLittle,q,0,0),value);
+            q.Little=false; byte[] msbBig=new byte[]{(byte)(msbWord>>8),(byte)(msbWord&255),0,0};
+            Eq("RAW14 MSB big",RawAtCore(msbBig,q,0,0),value);
+        }
+
+        static void TestRaw14Packed()
+        {
+            Params q=new Params{W=2,H=1,Stride=4,Offset=0,Format="RAW14_PACKED",Bits=14,Packed=true,Little=true,Lsb=true};
+            int v0=0x0123, v1=0x2345; uint bits=(uint)(v0 | (v1<<14));
+            byte[] packed=new byte[]{(byte)(bits&255),(byte)((bits>>8)&255),(byte)((bits>>16)&255),(byte)((bits>>24)&255)};
+            Eq("RAW14 packed x0",RawAtCore(packed,q,0,0),v0); Eq("RAW14 packed x1",RawAtCore(packed,q,1,0),v1);
+        }
+
+        static void TestRgb48Endian()
+        {
+            Params q=new Params{W=1,H=1,Stride=6,Offset=0,Format="RGB48",Little=true}; byte r,g,b;
+            RgbAtCore(new byte[]{0x34,0x12,0x78,0x56,0xBC,0x9A},q,0,0,out r,out g,out b);
+            Eq("RGB48 little R",r,0x12); Eq("RGB48 little G",g,0x56); Eq("RGB48 little B",b,0x9A);
+            q.Little=false; RgbAtCore(new byte[]{0x12,0x34,0x56,0x78,0x9A,0xBC},q,0,0,out r,out g,out b);
+            Eq("RGB48 big R",r,0x12); Eq("RGB48 big G",g,0x56); Eq("RGB48 big B",b,0x9A);
+            q.Format="BGR48"; q.Little=true; RgbAtCore(new byte[]{0x34,0x12,0x78,0x56,0xBC,0x9A},q,0,0,out r,out g,out b);
+            Eq("BGR48 little R",r,0x9A); Eq("BGR48 little G",g,0x56); Eq("BGR48 little B",b,0x12);
         }
     }
     void ShowErr(Exception ex){BeginInvoke((Action)delegate{status.Text="Failed.";MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);});}

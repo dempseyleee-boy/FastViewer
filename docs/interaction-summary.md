@@ -326,6 +326,7 @@ Export = RGB48
 - `1:1` 对当前使用场景价值不高，已移除。
 - UI 过于朴素，先改为深色专业工具风格，再尝试 Apple / macOS 浅色圆角卡片，随后参考 Next.js / Vercel 站点语言收敛为黑白极简、细边框、小圆角的开发者工具风格。
 - 为提升严谨性，新增 YUV Matrix / Range 显式设置，并在导出时写出 `.json` sidecar 元数据。
+- 新增内置 --self-test 和 	ests/run-self-test.ps1，覆盖文件名宽高、stride/size、YUV matrix/range、RAW14 16B/packed、RGB48/BGR48 endian 等核心回归检查。
 - 多图导入时参数可能污染，已改为每张图独立检测。
 - RGB48 / BGR48 字节序固定小端导致下游显示异常，已改为尊重 `Endian`。
 

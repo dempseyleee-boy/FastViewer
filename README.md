@@ -164,6 +164,31 @@ YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的�
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:assets\FastViewer.ico /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:dist\FastViewer.exe src\FastViewer.cs
 ```
 
+## 自动测试
+
+推荐每次改解析、转换、导出逻辑后运行：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-self-test.ps1
+```
+
+这个脚本会先重新构建 `dist/FastViewer.exe`，然后运行内置的：
+
+```powershell
+dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
+```
+
+当前 self-test 覆盖：
+
+- 文件名宽高解析，例如 `3280x2464`、`w1920h1080`。
+- 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`RGB48`、`NV21`。
+- `BT.601 / BT.709 / BT.2020` 与 `Limited / Full` 的 YUV ↔ RGB round-trip。
+- `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。
+- `RAW14_PACKED` bitstream 取样。
+- `RGB48 / BGR48` 的 little / big endian 解码。
+
+报告会写到 `dist/FastViewer.selftest.txt`；退出码为 `0` 表示通过，非 `0` 表示有回归。
+
 ## 交互总结
 
 完整需求演进、关键决策和问题修复记录见：[docs/interaction-summary.md](docs/interaction-summary.md)。
