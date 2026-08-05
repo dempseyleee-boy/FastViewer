@@ -42,8 +42,9 @@ static class UiShape
 {
     public static GraphicsPath RoundRect(Rectangle r,int radius)
     {
-        int d=Math.Max(1,radius*2);
         var p=new GraphicsPath();
+        if(radius<=0){p.AddRectangle(r);return p;}
+        int d=Math.Max(1,radius*2);
         p.AddArc(r.X,r.Y,d,d,180,90);
         p.AddArc(r.Right-d,r.Y,d,d,270,90);
         p.AddArc(r.Right-d,r.Bottom-d,d,d,0,90);
@@ -137,22 +138,22 @@ sealed class MainForm : Form
 
     void BuildUi()
     {
-        Color appBg=Color.FromArgb(245,245,247);
+        Color appBg=Color.White;
         Color cardBg=Color.FromArgb(255,255,255);
-        Color ink=Color.FromArgb(29,29,31);
-        Color sub=Color.FromArgb(110,110,115);
-        Color line=Color.FromArgb(229,229,234);
+        Color ink=Color.FromArgb(0,0,0);
+        Color sub=Color.FromArgb(102,102,102);
+        Color line=Color.FromArgb(234,234,234);
 
         BackColor=appBg;
         ForeColor=ink;
-        Font=new Font("Segoe UI",9.5F,FontStyle.Regular,GraphicsUnit.Point);
+        Font=new Font("Segoe UI",9.2F,FontStyle.Regular,GraphicsUnit.Point);
 
-        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,BackColor=appBg,Padding=new Padding(18)};
-        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,374));
+        var root=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=2,RowCount=1,BackColor=appBg,Padding=new Padding(0)};
+        root.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,368));
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         Controls.Add(root);
 
-        var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=24,Padding=new Padding(22)};
+        var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=0,Padding=new Padding(24,22,24,22)};
         root.Controls.Add(leftShell,0,0);
 
         var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=31,BackColor=cardBg};
@@ -160,7 +161,7 @@ sealed class MainForm : Form
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         leftShell.Controls.Add(left);
 
-        AddTitle(left,"FastViewer","Camera frame lab",0);
+        AddTitle(left,"▲ FastViewer","Raw frame toolkit",0);
         AddSection(left,"FILE",2);
         StyleTextBox(pathBox); var pathHost=FieldHost(pathBox); left.Controls.Add(pathHost,0,3); left.SetColumnSpan(pathHost,2);
         AddButton(left,"Browse / Multi",delegate{Browse();},0,4,1); AddButton(left,"Open",delegate{OpenFileNow();},1,4,1);
@@ -183,37 +184,37 @@ sealed class MainForm : Form
         exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
         AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
 
-        var hint=new Label{Text="Drop files anywhere · suffix is case-insensitive\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + mouse wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,16,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Segoe UI",8.8F)};
+        var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.4F)};
         left.Controls.Add(hint,0,30); left.SetColumnSpan(hint,2);
 
-        var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(18,0,0,0)};
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute,54));
+        var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(28,22,28,22)};
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute,70));
         right.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        right.RowStyles.Add(new RowStyle(SizeType.Absolute,46));
+        right.RowStyles.Add(new RowStyle(SizeType.Absolute,48));
         root.Controls.Add(right,1,0);
 
-        var header=new Label{Text="Canvas",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=ink,Padding=new Padding(4,0,0,0),BackColor=appBg};
+        var header=new Label{Text="Inspect camera frames",Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,Font=new Font("Segoe UI Semibold",22F,FontStyle.Bold),ForeColor=ink,Padding=new Padding(2,0,0,0),BackColor=appBg};
         right.Controls.Add(header,0,0);
 
-        var viewerFrame=new RoundedPanel{Dock=DockStyle.Fill,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=26,Padding=new Padding(14)};
+        var viewerFrame=new RoundedPanel{Dock=DockStyle.Fill,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=14,Padding=new Padding(12)};
         right.Controls.Add(viewerFrame,0,1);
-        imagePanel.Dock=DockStyle.Fill; imagePanel.AutoScroll=true; imagePanel.TabStop=true; imagePanel.FillColor=Color.FromArgb(250,250,252); imagePanel.BackColor=Color.FromArgb(250,250,252); imagePanel.BorderColor=Color.FromArgb(235,235,240); imagePanel.Radius=20; imagePanel.Padding=new Padding(0); imagePanel.BorderStyle=BorderStyle.None; imagePanel.MouseEnter+=delegate{imagePanel.Focus();}; imagePanel.MouseWheel+=ImageWheel; imagePanel.Resize+=delegate{if(multiMode)LayoutGallery();}; viewerFrame.Controls.Add(imagePanel);
-        pic.Location=new Point(0,0); pic.SizeMode=PictureBoxSizeMode.StretchImage; pic.BackColor=Color.FromArgb(250,250,252); pic.MouseEnter+=delegate{imagePanel.Focus();}; pic.MouseWheel+=ImageWheel; gallery.MouseEnter+=delegate{imagePanel.Focus();}; gallery.MouseWheel+=ImageWheel; imagePanel.Controls.Add(pic);
+        imagePanel.Dock=DockStyle.Fill; imagePanel.AutoScroll=true; imagePanel.TabStop=true; imagePanel.FillColor=Color.Black; imagePanel.BackColor=Color.Black; imagePanel.BorderColor=Color.Black; imagePanel.Radius=10; imagePanel.Padding=new Padding(0); imagePanel.BorderStyle=BorderStyle.None; imagePanel.MouseEnter+=delegate{imagePanel.Focus();}; imagePanel.MouseWheel+=ImageWheel; imagePanel.Resize+=delegate{if(multiMode)LayoutGallery();}; viewerFrame.Controls.Add(imagePanel);
+        pic.Location=new Point(0,0); pic.SizeMode=PictureBoxSizeMode.StretchImage; pic.BackColor=Color.Black; pic.MouseEnter+=delegate{imagePanel.Focus();}; pic.MouseWheel+=ImageWheel; gallery.MouseEnter+=delegate{imagePanel.Focus();}; gallery.MouseWheel+=ImageWheel; imagePanel.Controls.Add(pic);
 
-        status.Dock=DockStyle.Fill; status.TextAlign=ContentAlignment.MiddleLeft; status.Padding=new Padding(18,0,0,0); status.BackColor=cardBg; status.ForeColor=sub; status.Font=new Font("Segoe UI",9F); status.Text="Drop or open a phone camera RAW / YUV / RGB frame."; right.Controls.Add(status,0,2);
+        status.Dock=DockStyle.Fill; status.TextAlign=ContentAlignment.MiddleLeft; status.Padding=new Padding(2,0,0,0); status.BackColor=appBg; status.ForeColor=sub; status.Font=new Font("Consolas",8.8F); status.Text="ready · drop or open a phone camera frame"; right.Controls.Add(status,0,2);
         EnableDrop(this); EnableDrop(root); EnableDrop(leftShell); EnableDrop(left); EnableDrop(pathBox); EnableDrop(right); EnableDrop(header); EnableDrop(viewerFrame); EnableDrop(imagePanel); EnableDrop(pic); EnableDrop(gallery); EnableDrop(status);
     }
 
-    void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=70,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",20F,FontStyle.Bold),ForeColor=Color.FromArgb(29,29,31)};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=24,ForeColor=Color.FromArgb(110,110,115),Font=new Font("Segoe UI",9.5F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
-    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=32,Padding=new Padding(0,14,0,0),Font=new Font("Segoe UI Semibold",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(142,142,147),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
+    void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=76,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=Color.Black};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=26,ForeColor=Color.FromArgb(102,102,102),Font=new Font("Consolas",8.8F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
+    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=34,Padding=new Padding(0,16,0,0),Font=new Font("Consolas",8.4F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
     void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
-    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Height=36,Margin=new Padding(c==0?0:6,5,c==0?6:0,5),Font=new Font("Segoe UI Semibold",9F)}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
-    Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.FromArgb(248,248,250),BackColor=Color.White,BorderColor=Color.FromArgb(225,225,230),Radius=13,Margin=new Padding(0,4,0,4),Padding=new Padding(11,6,9,5)}; child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
-    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.FromArgb(248,248,250);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
-    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.FromArgb(248,248,250);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
-    void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=13;rb.BorderColor=primary?Color.FromArgb(0,113,227):Color.FromArgb(218,218,224);rb.FillNormal=primary?Color.FromArgb(0,113,227):Color.FromArgb(242,242,247);rb.FillHover=primary?Color.FromArgb(0,102,204):Color.FromArgb(232,232,237);rb.TextColor=primary?Color.White:Color.FromArgb(29,29,31);}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.FromArgb(0,113,227):Color.FromArgb(242,242,247);b.ForeColor=primary?Color.White:Color.FromArgb(29,29,31);}}
+    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,5,12,5),Font=new Font("Segoe UI",9F)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
+    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,5,12,5),Font=new Font("Segoe UI",9F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
+    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Height=34,Margin=new Padding(c==0?0:6,5,c==0?6:0,5),Font=new Font("Segoe UI Semibold",8.8F)}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
+    Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=8,Margin=new Padding(0,4,0,4),Padding=new Padding(10,6,9,5)}; child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
+    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",9.0F);} 
+    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",9.0F);} 
+    void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=8;rb.BorderColor=primary?Color.Black:Color.FromArgb(234,234,234);rb.FillNormal=primary?Color.Black:Color.White;rb.FillHover=primary?Color.FromArgb(23,23,23):Color.FromArgb(250,250,250);rb.TextColor=primary?Color.White:Color.Black;}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.Black:Color.White;b.ForeColor=primary?Color.White:Color.Black;}}
 
     void EnableDrop(Control c)
     {
@@ -371,8 +372,8 @@ sealed class MainForm : Form
         gallery.AutoScroll=true;
         gallery.WrapContents=true;
         gallery.FlowDirection=FlowDirection.LeftToRight;
-        gallery.BackColor=Color.FromArgb(250,250,252);
-        gallery.Padding=new Padding(12);
+        gallery.BackColor=Color.Black;
+        gallery.Padding=new Padding(14);
         imagePanel.Controls.Add(gallery);
     }
     Params ParamsForFile(string path)
@@ -422,18 +423,18 @@ sealed class MainForm : Form
     void AddImageCard(ViewerItem job,int done,int total)
     {
         galleryBitmaps.Add(job.Bitmap); galleryItems.Add(job);
-        var card=new RoundedPanel{FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(229,229,234),Radius=18,Margin=new Padding(10),Padding=new Padding(10)};
+        var card=new RoundedPanel{FillColor=Color.White,BackColor=Color.Black,BorderColor=Color.FromArgb(234,234,234),Radius=12,Margin=new Padding(10),Padding=new Padding(10)};
         var inner=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Color.White};
         inner.RowStyles.Add(new RowStyle(SizeType.Absolute,50));
         inner.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(29,29,31),TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Segoe UI",9F)};
-        var pb=new PictureBox{Dock=DockStyle.Fill,Image=job.Bitmap,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.FromArgb(250,250,252)};
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.Black,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
+        var pb=new PictureBox{Dock=DockStyle.Fill,Image=job.Bitmap,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.Black};
         inner.Controls.Add(cap,0,0); inner.Controls.Add(pb,0,1); card.Controls.Add(inner); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
     }
     void AddErrorCard(ViewerItem job,int done,int total)
     {
-        var card=new RoundedPanel{FillColor=Color.FromArgb(255,245,245),BackColor=Color.FromArgb(255,245,245),BorderColor=Color.FromArgb(255,204,204),Radius=18,Margin=new Padding(10),Padding=new Padding(14)};
-        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\nFAILED: "+job.Error,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(180,35,24),TextAlign=ContentAlignment.MiddleLeft,BackColor=Color.FromArgb(255,245,245)};
+        var card=new RoundedPanel{FillColor=Color.White,BackColor=Color.Black,BorderColor=Color.FromArgb(255,204,204),Radius=12,Margin=new Padding(10),Padding=new Padding(14)};
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\nFAILED: "+job.Error,Dock=DockStyle.Fill,ForeColor=Color.FromArgb(180,35,24),TextAlign=ContentAlignment.MiddleLeft,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
         card.Controls.Add(cap); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
     }
     void LayoutGallery()
