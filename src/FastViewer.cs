@@ -163,7 +163,7 @@ sealed class MainForm : Form
 
         AddTitle(left,"▲ FastViewer","Raw frame toolkit",0);
         AddSection(left,"FILE",2);
-        StyleTextBox(pathBox); var pathHost=FieldHost(pathBox); left.Controls.Add(pathHost,0,3); left.SetColumnSpan(pathHost,2);
+        StyleFileTextBox(pathBox); var pathHost=FileFieldHost(pathBox); left.Controls.Add(pathHost,0,3); left.SetColumnSpan(pathHost,2);
         AddButton(left,"Browse / Multi",delegate{Browse();},0,4,1); AddButton(left,"Open",delegate{OpenFileNow();},1,4,1);
 
         AddSection(left,"FRAME",6);
@@ -226,7 +226,9 @@ sealed class MainForm : Form
     void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,1,12,1),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
     void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Margin=new Padding(c==0?0:6,1,c==0?6:0,1),Font=new Font("Segoe UI Semibold",8.6F)}; b.Height=ButtonHeight(b.Font); b.MinimumSize=new Size(0,b.Height); StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
     Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=7,Margin=new Padding(0,1,0,1),Padding=new Padding(8,1,8,1)}; int h=FieldHeight(child); host.Height=h; host.MinimumSize=new Size(0,h); child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
+    Control FileFieldHost(TextBox child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=8,Margin=new Padding(0,4,0,4),Padding=new Padding(10,6,9,5)}; int h=Math.Max(TextHeight(child.Font)*2+14,46); host.Height=h; host.MinimumSize=new Size(0,h); child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
     void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
+    void StyleFileTextBox(TextBox b){StyleTextBox(b);b.Multiline=true;b.WordWrap=true;b.ScrollBars=ScrollBars.None;}
     void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
     void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=8;rb.BorderColor=primary?Color.Black:Color.FromArgb(234,234,234);rb.FillNormal=primary?Color.Black:Color.White;rb.FillHover=primary?Color.FromArgb(23,23,23):Color.FromArgb(250,250,250);rb.TextColor=primary?Color.White:Color.Black;}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.Black:Color.White;b.ForeColor=primary?Color.White:Color.Black;}}
 
