@@ -7,6 +7,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Text;
+using System.Security.Cryptography;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -986,11 +987,12 @@ sealed class MainForm : Form
             Test("RAW14 16B alignment", TestRaw14Alignment);
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
+            string sampleDir=SampleDirArg(args); if(!String.IsNullOrEmpty(sampleDir))Test("local golden camera samples",delegate{TestGoldenSamples(sampleDir);});
 
             report.AppendLine();
             report.AppendLine("Passed: "+passed);
             report.AppendLine("Failed: "+failed);
-            string reportPath=args.Length>1?args[1]:Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"FastViewer.selftest.txt");
+            string reportPath=ReportPathArg(args);
             string dir=Path.GetDirectoryName(reportPath); if(!String.IsNullOrEmpty(dir))Directory.CreateDirectory(dir);
             File.WriteAllText(reportPath,report.ToString(),Encoding.UTF8);
             return failed==0?0:1;
@@ -1007,6 +1009,23 @@ sealed class MainForm : Form
         static void Near(string label,int actual,int expected,int tol){if(Math.Abs(actual-expected)>tol)throw new Exception(label+" expected near "+expected+", got "+actual);}
         static void NearRgb(string label,byte r,byte g,byte b,int er,int eg,int eb,int tol){Near(label+" R",r,er,tol);Near(label+" G",g,eg,tol);Near(label+" B",b,eb,tol);}
 
+        static string ReportPathArg(string[] args)
+        {
+            string reportPath=Path.Combine(AppDomain.CurrentDomain.BaseDirectory,"FastViewer.selftest.txt");
+            for(int i=1;i<args.Length;i++)
+            {
+                string a=args[i];
+                if(String.Equals(a,"--sample-dir",StringComparison.OrdinalIgnoreCase)){i++; continue;}
+                if(!a.StartsWith("--",StringComparison.Ordinal))reportPath=a;
+            }
+            return reportPath;
+        }
+
+        static string SampleDirArg(string[] args)
+        {
+            for(int i=1;i<args.Length-1;i++)if(String.Equals(args[i],"--sample-dir",StringComparison.OrdinalIgnoreCase))return args[i+1];
+            return null;
+        }
         static void TestFilenameDimensions()
         {
             int w,h;
@@ -1069,6 +1088,80 @@ sealed class MainForm : Form
             Eq("RAW14 packed x0",RawAtCore(packed,q,0,0),v0); Eq("RAW14 packed x1",RawAtCore(packed,q,1,0),v1);
         }
 
+        static void TestGoldenSamples(string sampleDir)
+        {
+            if(!Directory.Exists(sampleDir))throw new Exception("sample dir not found: "+sampleDir);
+            string[,] samples=new string[,]{
+                {"143_P12X_DV_Face_20260325_100558_4096x3072_p_4096x3072_process_1.RAW14_RGGB_16B","25165824","95AEAAE03B56C171CF88753C821630A3C24F1FCF406CEC3E17D56781AA3F8369"},
+                {"1920X1280.NV21","3686400","534C8B1B90C6111C7CCA8328131631535A40FA2BC9F0A37072599E23CA0E338B"},
+                {"20251217100_P12U_F_Face_20251217_211224_3280x2464_0.BGR48","48491520","3DADFB500F0013B65008192B43DBDA0ECDFD1AB5C7E50ED0D2C58438E960ADE2"},
+                {"20251217100_P12U_F_Face_20251217_211224_3280x2464_p_3280x2464_process_1.RAW14_GRBG_16B","16163840","79B981B7FEA345437E6E3527D43166CEB49FD373BBAF8E8636794027ABE61AA4"},
+                {"20251217101_P12U_F_Face_20251217_211423_3280x2464_p_3280x2464_process_1.RAW14_GRBG_16B","16163840","AC9C12746B77621C6E019910B1F4FD4201F9B6DCC5605E851B6AA83BC37E43B9"}
+            };
+            for(int i=0;i<samples.GetLength(0);i++)
+            {
+                string name=samples[i,0], path=Path.Combine(sampleDir,name);
+                if(!File.Exists(path))throw new Exception("missing sample: "+name);
+                long expectedLen=Int64.Parse(samples[i,1]);
+                EqLong(name+" length",new FileInfo(path).Length,expectedLen);
+                string hash=Sha256File(path);
+                if(!String.Equals(hash,samples[i,2],StringComparison.OrdinalIgnoreCase))throw new Exception(name+" SHA256 changed: "+hash);
+                Params q=ParamsFromSamplePath(path);
+                EqLong(name+" expected bytes",ExpectedBytes(q),expectedLen);
+                SmokeDecodeSample(path,q,name);
+                report.AppendLine("       "+name+" · "+q.Format+" · "+q.W+"x"+q.H+" · sha256 ok");
+            }
+        }
+
+        static string Sha256File(string path)
+        {
+            using(SHA256 sha=SHA256.Create())using(FileStream fs=File.OpenRead(path))
+            {
+                byte[] hash=sha.ComputeHash(fs); StringBuilder sb=new StringBuilder(hash.Length*2);
+                for(int i=0;i<hash.Length;i++)sb.Append(hash[i].ToString("X2"));
+                return sb.ToString();
+            }
+        }
+
+        static Params ParamsFromSamplePath(string path)
+        {
+            Params q=new Params(); int w,h;
+            if(!TryDims(path,out w,out h))throw new Exception("cannot parse dimensions: "+Path.GetFileName(path));
+            q.W=w; q.H=h; q.Offset=0; q.Little=true; q.Lsb=true; q.Pattern=0; q.YuvMatrix=0; q.YuvFullRange=false;
+            string ext=Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+            Match m=Regex.Match(ext,@"^RAW(8|10|12|14|16)_(RGGB|GRBG|GBRG|BGGR)_(PACKED|16B|8B)$",RegexOptions.IgnoreCase);
+            if(m.Success)
+            {
+                int bits=Int32.Parse(m.Groups[1].Value); string store=m.Groups[3].Value.ToUpperInvariant();
+                q.Format="RAW"+bits+"_"+store; q.Bits=bits; q.Packed=store=="PACKED"; q.Pattern=PatternIndex(m.Groups[2].Value);
+            }
+            else if(ext=="NV21"||ext=="NV12"||ext=="I420"||ext=="YV12"||ext=="YUV420P"||ext=="P010")q.Format=ext;
+            else if(ext=="RGB24"||ext=="BGR24"||ext=="RGBA32"||ext=="BGRA32"||ext=="RGB48"||ext=="BGR48")q.Format=ext;
+            else throw new Exception("unsupported sample extension: "+ext);
+            if(q.Bits==0){Match bm=Regex.Match(q.Format,@"RAW(\d+)_"); q.Bits=bm.Success?Int32.Parse(bm.Groups[1].Value):8;}
+            q.Stride=DefaultStride(q.W,q.Format);
+            return q;
+        }
+
+        static void SmokeDecodeSample(string path,Params q,string label)
+        {
+            byte[] bytes=File.ReadAllBytes(path);
+            if(q.Format.StartsWith("RAW"))
+            {
+                int max=q.Bits>=16?65535:((1<<q.Bits)-1);
+                int a=RawAtCore(bytes,q,0,0), b=RawAtCore(bytes,q,q.W/2,q.H/2), c=RawAtCore(bytes,q,q.W-1,q.H-1);
+                if(a<0||a>max||b<0||b>max||c<0||c>max)throw new Exception(label+" RAW sample out of "+q.Bits+"-bit range");
+            }
+            else if(q.Format=="RGB48"||q.Format=="BGR48"||q.Format=="RGB24"||q.Format=="BGR24"||q.Format=="RGBA32"||q.Format=="BGRA32")
+            {
+                byte r,g,b; RgbAtCore(bytes,q,q.W/2,q.H/2,out r,out g,out b);
+            }
+            else if(q.Format=="NV21"||q.Format=="NV12"||q.Format=="I420"||q.Format=="YV12"||q.Format=="YUV420P")
+            {
+                int a=bytes[q.Offset], b=bytes[q.Offset+(q.H/2)*q.Stride+q.W/2], c=bytes[q.Offset+q.Stride*q.H];
+                if(a<0||b<0||c<0)throw new Exception(label+" YUV sample read failed");
+            }
+        }
         static void TestRgb48Endian()
         {
             Params q=new Params{W=1,H=1,Stride=6,Offset=0,Format="RGB48",Little=true}; byte r,g,b;

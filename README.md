@@ -189,6 +189,20 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 
 报告会写到 `dist/FastViewer.selftest.txt`；退出码为 `0` 表示通过，非 `0` 表示有回归。
 
+如果本机有真实 camera dump 样张，可以运行本地 golden sample 测试：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-local-sample-test.ps1
+```
+
+默认样张目录是 `C:\Users\ljr23225\Desktop\output`，也可以指定其他目录：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-local-sample-test.ps1 -SampleDir C:\path\to\samples
+```
+
+本地样张测试不会把大图提交到仓库；它只校验这些文件在本机存在且 SHA256、文件大小、文件名宽高、格式推断、expected bytes、少量 RAW/RGB/YUV 采样读取都符合预期。
+
 ## 交互总结
 
 完整需求演进、关键决策和问题修复记录见：[docs/interaction-summary.md](docs/interaction-summary.md)。
