@@ -124,9 +124,11 @@ w3280h2464
 
 RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 `.RAW14_GRBG_16B`。注意：RAW 导出是把当前解码后的 RGB 画面重新编码成 Bayer dump，适合格式互转和喂给下游工具链；它不能恢复原 sensor RAW 里已经丢失的信息。
 
-YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。
+YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。若下游工具显示发黑或颜色异常，通常是字节序不一致：可尝试把 `Endian` 切换为 `Big Endian` 后再导出。
+
+每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，方便后续复现和排查。
 
 ## 导出通路锁定策略
 
@@ -151,7 +153,8 @@ YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的�
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
 - `Stride` 可留空，程序会按当前格式自动给默认 stride。
 - `Rotate` 支持 `0`、`90`、`180`、`270` 度旋转。
-- `Export` 可以选择图片格式或相机 frame dump 格式，用于 RAW / RGB / YUV / NV21 等格式之间转换导出。
+- `YUV Matrix` / `YUV Range` 用于控制 YUV 与 RGB 转换的色彩矩阵和范围，默认 `BT.601 / Limited`。
+- `Export` 可以选择图片格式或相机 frame dump 格式，用于 RAW / RGB / YUV / NV21 等格式之间转换导出，导出时会附带 `.json` sidecar 元数据。
 
 ## 从源码构建
 

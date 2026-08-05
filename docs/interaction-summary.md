@@ -306,9 +306,13 @@ Export = RGB48
 
 再重新导出。
 
+导出时会写出 sidecar 元数据文件 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，用于复现导出条件和排查参数歧义。
+
 ### YUV 限制
 
 `NV21`、`NV12`、`I420`、`YV12`、`YUV420P`、`P010` 这些 YUV420 / P010 系列导出要求宽高为偶数。这符合手机 camera dump 的常见要求。
+
+当前 YUV 转换支持 `YUV Matrix = BT.601 / BT.709 / BT.2020` 和 `YUV Range = Limited / Full`。读取 YUV 预览、YUV 导出都会使用当前设置。默认值为 `BT.601 / Limited`，这是很多手机 camera dump 的常见默认，但不是所有场景都正确。
 
 ## 已解决的主要问题
 
@@ -321,6 +325,7 @@ Export = RGB48
 - `Preview` 选项容易让人误以为只读局部，已移除。
 - `1:1` 对当前使用场景价值不高，已移除。
 - UI 过于朴素，先改为深色专业工具风格，再尝试 Apple / macOS 浅色圆角卡片，随后参考 Next.js / Vercel 站点语言收敛为黑白极简、细边框、小圆角的开发者工具风格。
+- 为提升严谨性，新增 YUV Matrix / Range 显式设置，并在导出时写出 `.json` sidecar 元数据。
 - 多图导入时参数可能污染，已改为每张图独立检测。
 - RGB48 / BGR48 字节序固定小端导致下游显示异常，已改为尊重 `Endian`。
 

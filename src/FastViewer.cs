@@ -6,6 +6,7 @@ using System.Drawing.Drawing2D;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
+using System.Text;
 using System.Threading;
 using System.Windows.Forms;
 
@@ -24,8 +25,8 @@ static class Program
 
 sealed class Params
 {
-    public int W,H,Stride,Offset,Black,White,Pattern,View,Rotate,Bits;
-    public bool AutoLevels,Little,Lsb,Packed;
+    public int W,H,Stride,Offset,Black,White,Pattern,View,Rotate,Bits,YuvMatrix;
+    public bool AutoLevels,Little,Lsb,Packed,YuvFullRange;
     public string Format;
 }
 
@@ -118,7 +119,7 @@ sealed class MainForm : Form
 {
     TextBox pathBox=new TextBox(), wBox=new TextBox(), hBox=new TextBox(), strideBox=new TextBox(), offsetBox=new TextBox();
     TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
-    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), exportBox=new ComboBox();
+    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), yuvMatrixBox=new ComboBox(), yuvRangeBox=new ComboBox(), exportBox=new ComboBox();
     RoundedPanel imagePanel=new RoundedPanel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
     byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
@@ -156,7 +157,7 @@ sealed class MainForm : Form
         var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=0,Padding=new Padding(22,18,22,18)};
         root.Controls.Add(leftShell,0,0);
 
-        var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=31,BackColor=cardBg};
+        var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=33,BackColor=cardBg};
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,104));
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         leftShell.Controls.Add(left);
@@ -178,15 +179,17 @@ sealed class MainForm : Form
         patternBox.DropDownStyle=ComboBoxStyle.DropDownList; patternBox.Items.AddRange(new object[]{"GRBG","RGGB","BGGR","GBRG"}); patternBox.SelectedIndex=0; AddCombo(left,"Bayer",patternBox,21);
         viewBox.DropDownStyle=ComboBoxStyle.DropDownList; viewBox.Items.AddRange(new object[]{"Color","Bayer gray","Bayer site RGB"}); viewBox.SelectedIndex=0; AddCombo(left,"View",viewBox,22);
         rotBox.DropDownStyle=ComboBoxStyle.DropDownList; rotBox.Items.AddRange(new object[]{"0","90","180","270"}); rotBox.SelectedIndex=0; AddCombo(left,"Rotate",rotBox,23);
+        yuvMatrixBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvMatrixBox.Items.AddRange(new object[]{"BT.601","BT.709","BT.2020"}); yuvMatrixBox.SelectedIndex=0; AddCombo(left,"YUV Matrix",yuvMatrixBox,24);
+        yuvRangeBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvRangeBox.Items.AddRange(new object[]{"Limited","Full"}); yuvRangeBox.SelectedIndex=0; AddCombo(left,"YUV Range",yuvRangeBox,25);
 
-        AddSection(left,"OUTPUT",25);
-        AddButton(left,"Fit Window",delegate{FitWindow();},0,26,2);
-        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
-        AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
+        AddSection(left,"OUTPUT",27);
+        AddButton(left,"Fit Window",delegate{FitWindow();},0,28,2);
+        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,29);
+        AddButton(left,"Refresh",delegate{RefreshPreview();},0,30,1); AddButton(left,"Export Image",delegate{ExportImage();},1,30,1);
 
         var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.2F)};
-        left.Controls.Add(hint,0,30); left.SetColumnSpan(hint,2);
-        FitLeftRowsToContent(left,new int[]{0,2,3,4,6,7,8,9,10,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,30});
+        left.Controls.Add(hint,0,32); left.SetColumnSpan(hint,2);
+        FitLeftRowsToContent(left,new int[]{0,2,3,4,6,7,8,9,10,12,13,14,15,17,18,19,20,21,22,23,24,25,27,28,29,30,32});
 
         var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(28,22,28,22)};
         right.RowStyles.Add(new RowStyle(SizeType.Absolute,70));
@@ -216,20 +219,20 @@ sealed class MainForm : Form
             t.RowStyles.Add(used?new RowStyle(SizeType.AutoSize):new RowStyle(SizeType.Absolute,0));
         }
     }
-    void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=76,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=Color.Black};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=26,ForeColor=Color.FromArgb(102,102,102),Font=new Font("Consolas",8.8F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
-    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=26,Padding=new Padding(0,9,0,0),Font=new Font("Consolas",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
-    void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
+    void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=76,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=Color.Black};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=26,ForeColor=Color.FromArgb(102,102,102),Font=new Font("Consolas",8.8F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}
+    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=26,Padding=new Padding(0,9,0,0),Font=new Font("Consolas",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}
+    void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}
     int TextHeight(Font f){return TextRenderer.MeasureText("Ag",f).Height;}
     int FieldHeight(Control child){ComboBox cb=child as ComboBox; return (cb!=null?cb.PreferredHeight:TextHeight(child.Font)+2)+2;}
     int ButtonHeight(Font f){return TextHeight(f)+8;}
-    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,1,12,1),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,1,12,1),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Margin=new Padding(c==0?0:6,1,c==0?6:0,1),Font=new Font("Segoe UI Semibold",8.6F)}; b.Height=ButtonHeight(b.Font); b.MinimumSize=new Size(0,b.Height); StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
+    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,1,12,1),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}
+    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,1,12,1),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}
+    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Margin=new Padding(c==0?0:6,1,c==0?6:0,1),Font=new Font("Segoe UI Semibold",8.6F)}; b.Height=ButtonHeight(b.Font); b.MinimumSize=new Size(0,b.Height); StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}
     Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=7,Margin=new Padding(0,1,0,1),Padding=new Padding(8,1,8,1)}; int h=FieldHeight(child); host.Height=h; host.MinimumSize=new Size(0,h); child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
     Control FileFieldHost(TextBox child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=8,Margin=new Padding(0,4,0,4),Padding=new Padding(10,6,9,5)}; int h=Math.Max(TextHeight(child.Font)*3+18,64); host.Height=h; host.MinimumSize=new Size(0,h); child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
-    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
+    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);}
     void StyleFileTextBox(TextBox b){StyleTextBox(b);b.Multiline=true;b.WordWrap=true;b.ScrollBars=ScrollBars.None;}
-    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
+    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);}
     void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=8;rb.BorderColor=primary?Color.Black:Color.FromArgb(234,234,234);rb.FillNormal=primary?Color.Black:Color.White;rb.FillHover=primary?Color.FromArgb(23,23,23):Color.FromArgb(250,250,250);rb.TextColor=primary?Color.White:Color.Black;}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.Black:Color.White;b.ForeColor=primary?Color.White:Color.Black;}}
 
     void EnableDrop(Control c)
@@ -253,7 +256,7 @@ sealed class MainForm : Form
             if(files.Length==1){pathBox.Text=files[0];ApplyFileName(files[0]);OpenFileNow();}
             else OpenMany(files);
         }
-        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
     static string[] CollectDroppedFiles(string[] dropped)
     {
@@ -276,7 +279,7 @@ sealed class MainForm : Form
             d.Title="Open one or more phone camera files";
             d.Multiselect=true;
             d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.yuv;*.bin;*.dat|All files|*.*";
-            if(d.ShowDialog(this)==DialogResult.OK){if(d.FileNames.Length>1)OpenMany(d.FileNames);else{pathBox.Text=d.FileName; ApplyFileName(d.FileName);}}        
+            if(d.ShowDialog(this)==DialogResult.OK){if(d.FileNames.Length>1)OpenMany(d.FileNames);else{pathBox.Text=d.FileName; ApplyFileName(d.FileName);}}
         }
     }
 
@@ -285,7 +288,7 @@ sealed class MainForm : Form
         var q=new Params();
         int ww,hh; if(TryDims(path,out ww,out hh)){q.W=ww;q.H=hh;}else{Int32.TryParse(wBox.Text,out q.W);Int32.TryParse(hBox.Text,out q.H);}
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim());
-        q.Little=true; q.Lsb=true; q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90;
+        q.Little=true; q.Lsb=true; q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Format="RAW14_16B"; string ext=Path.GetExtension(path).ToLowerInvariant();
         var m=Regex.Match(ext,@"^\.raw(8|10|12|14|16)_(rggb|grbg|gbrg|bggr)_(packed|16b|8b)$",RegexOptions.IgnoreCase);
         if(m.Success)
@@ -311,7 +314,7 @@ sealed class MainForm : Form
     {
         if(q.W>0)wBox.Text=q.W.ToString(); if(q.H>0)hBox.Text=q.H.ToString();
         Select(fmtBox,q.Format); Select(patternBox,PatternName(q.Pattern));
-        endianBox.SelectedIndex=q.Little?0:1; alignBox.SelectedIndex=q.Lsb?0:1;
+        endianBox.SelectedIndex=q.Little?0:1; alignBox.SelectedIndex=q.Lsb?0:1; yuvMatrixBox.SelectedIndex=q.YuvMatrix; yuvRangeBox.SelectedIndex=q.YuvFullRange?1:0;
         strideBox.Text=q.Stride>0?q.Stride.ToString():"";
         UpdateExportChoices(new Params[]{q});
     }
@@ -335,6 +338,8 @@ sealed class MainForm : Form
     void AutoStrideIfEmpty(){ if(String.IsNullOrWhiteSpace(strideBox.Text))SetDefaultStride();}
     void SetDefaultStride(){int w;if(Int32.TryParse(wBox.Text,out w))strideBox.Text=DefaultStride(w,Format()).ToString();}
     string Format(){return fmtBox.SelectedItem==null?"RAW14_16B":fmtBox.SelectedItem.ToString().ToUpperInvariant();}
+    int YuvMatrixIndex(){return yuvMatrixBox.SelectedIndex<0?0:yuvMatrixBox.SelectedIndex;}
+    bool YuvFullRange(){return yuvRangeBox.SelectedIndex==1;}
     static int DefaultStride(int w,string f){if(f=="RAW8_8B")return w;if(f=="RAW10_PACKED")return ((w+3)/4)*5;if(f=="RAW12_PACKED")return ((w+1)/2)*3;if(f=="RAW14_PACKED")return (w*14+7)/8;if(f=="RGB24"||f=="BGR24")return w*3;if(f=="RGBA32"||f=="BGRA32")return w*4;if(f=="RGB48"||f=="BGR48")return w*6;if(f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P")return w;return w*2;}
 
     Params ReadParams()
@@ -342,12 +347,12 @@ sealed class MainForm : Form
         var q=new Params(); q.W=Int32.Parse(wBox.Text.Trim()); q.H=Int32.Parse(hBox.Text.Trim()); q.Format=Format();
         string st=strideBox.Text.Trim(); q.Stride=String.IsNullOrWhiteSpace(st)?DefaultStride(q.W,q.Format):Int32.Parse(st);
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim()); q.Little=endianBox.SelectedIndex==0; q.Lsb=alignBox.SelectedIndex==0;
-        q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90;
+        q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Packed=q.Format.EndsWith("PACKED"); q.Bits=8; var m=Regex.Match(q.Format,@"RAW(\d+)_"); if(m.Success)q.Bits=Int32.Parse(m.Groups[1].Value);
         string b=blackBox.Text.Trim().ToLowerInvariant(), w=whiteBox.Text.Trim().ToLowerInvariant(); q.AutoLevels=b==""||w==""||b=="auto"||w=="auto"; q.Black=q.AutoLevels?0:Int32.Parse(b); q.White=q.AutoLevels?MaxRaw(q.Bits):Int32.Parse(w); double gv; if(!Double.TryParse(gammaBox.Text,out gv))gv=2.2; gammaValue=gv;
         if(q.W<=0||q.H<=0)throw new Exception("Width/height must be positive."); if(q.Stride<=0)throw new Exception("Stride must be positive or empty."); if(q.Offset<0)throw new Exception("Offset must be >=0."); return q;
     }
-    static int MaxRaw(int bits){return bits>=16?65535:((1<<bits)-1);}    
+    static int MaxRaw(int bits){return bits>=16?65535:((1<<bits)-1);}
     bool IsRaw(){return p.Format.StartsWith("RAW");}
     bool IsRgb(){return p.Format=="RGB24"||p.Format=="BGR24"||p.Format=="RGBA32"||p.Format=="BGRA32"||p.Format=="RGB48"||p.Format=="BGR48";}
     bool IsYuv(){return !IsRaw()&&!IsRgb();}
@@ -360,7 +365,7 @@ sealed class MainForm : Form
             if(String.IsNullOrWhiteSpace(pathBox.Text))Browse(); if(String.IsNullOrWhiteSpace(pathBox.Text))return; openedPath=pathBox.Text.Trim(); ApplyFileName(openedPath); p=ReadParams(); openedPaths=new string[]{openedPath}; ShowSingleMode();
             long expected=ExpectedBytes(p), len=new FileInfo(openedPath).Length; if(len<expected)throw new Exception("File too small: "+len+" bytes, expected at least "+expected+".");
             status.Text="Reading whole file..."; ThreadPool.QueueUserWorkItem(delegate{try{byte[] bytes=File.ReadAllBytes(openedPath); BeginInvoke((Action)delegate{data=bytes; EstimateLevels(); BuildStretchLut(); Render(true);});}catch(Exception ex){ShowErr(ex);}});
-        }catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+        }catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
     void RefreshPreview(){try{if(multiMode&&openedPaths!=null&&openedPaths.Length>1){OpenMany(openedPaths);return;} p=ReadParams(); if(data==null){OpenFileNow();return;} EstimateLevels(); BuildStretchLut(); Render(true);}catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}}
     void FitWindow(){if(multiMode){galleryZoom=1.0;LayoutGallery();UpdateStatus();return;} if(current!=null){zoom=FitZoomFor(current);ApplyZoom();imagePanel.AutoScrollPosition=new Point(0,0);UpdateStatus();}else RefreshPreview();}
@@ -370,7 +375,7 @@ sealed class MainForm : Form
     {
         multiMode=false;
         imagePanel.AutoScroll=true;
-        if(pic.Parent!=imagePanel){imagePanel.Controls.Clear();imagePanel.Controls.Add(pic);}        
+        if(pic.Parent!=imagePanel){imagePanel.Controls.Clear();imagePanel.Controls.Add(pic);}
     }
     void ShowMultiStart()
     {
@@ -434,7 +439,7 @@ sealed class MainForm : Form
                 BeginInvoke((Action)delegate{UpdateStatus();});
             });
         }
-        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}    
+        catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
     void AddImageCard(ViewerItem job,int done,int total)
     {
@@ -470,8 +475,8 @@ sealed class MainForm : Form
     }
     int ReadPacked(int row,int x,int bits)
     {
-        if(bits==10){int g=x/4,i=x&3,o=row+g*5; if(i==0)return data[o]|((data[o+4]&3)<<8); if(i==1)return data[o+1]|((data[o+4]&12)<<6); if(i==2)return data[o+2]|((data[o+4]&48)<<4); return data[o+3]|((data[o+4]&192)<<2);}        
-        if(bits==12){int g=x/2,i=x&1,o=row+g*3; if(i==0)return data[o]|((data[o+2]&15)<<8); return data[o+1]|((data[o+2]&240)<<4);}        
+        if(bits==10){int g=x/4,i=x&3,o=row+g*5; if(i==0)return data[o]|((data[o+4]&3)<<8); if(i==1)return data[o+1]|((data[o+4]&12)<<6); if(i==2)return data[o+2]|((data[o+4]&48)<<4); return data[o+3]|((data[o+4]&192)<<2);}
+        if(bits==12){int g=x/2,i=x&1,o=row+g*3; if(i==0)return data[o]|((data[o+2]&15)<<8); return data[o+1]|((data[o+2]&240)<<4);}
         int bit=x*bits, bo=row+bit/8, sh=bit&7, word=data[bo]|(data[bo+1]<<8)|(data[bo+2]<<16); return (word>>sh)&((1<<bits)-1);
     }
     char BayerSite(int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(p.Pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
@@ -508,7 +513,7 @@ sealed class MainForm : Form
             if(f=="NV12"||f=="NV21"){int uvo=uvb+(y/2)*p.Stride+(x/2)*2; if(f=="NV12"){U=data[uvo];V=data[uvo+1];}else{V=data[uvo];U=data[uvo+1];}}
             else{int cs=p.Stride/2, ch=(p.H+1)/2, off=(y/2)*cs+(x/2), size=cs*ch; if(f=="YV12"){V=data[uvb+off];U=data[uvb+size+off];}else{U=data[uvb+off];V=data[uvb+size+off];}}
         }
-        int c=Y-16,d=U-128,e=V-128; rr=Clamp((298*c+409*e+128)>>8); gg=Clamp((298*c-100*d-208*e+128)>>8); bb=Clamp((298*c+516*d+128)>>8);
+        YuvToRgb(Y,U,V,p.YuvMatrix,p.YuvFullRange,out rr,out gg,out bb);
     }
 
     void FastDemosaic2x2(int x,int y,out int r,out int g,out int b)
@@ -548,7 +553,7 @@ sealed class MainForm : Form
             stretchLut[i]=Clamp((int)(n*255+0.5));
         }
     }
-    byte Stretch(int v){if(stretchLut!=null){if(v<0)v=0;else if(v>=stretchLut.Length)v=stretchLut.Length-1;return stretchLut[v];}return Clamp(v);}    
+    byte Stretch(int v){if(stretchLut!=null){if(v<0)v=0;else if(v>=stretchLut.Length)v=stretchLut.Length-1;return stretchLut[v];}return Clamp(v);}
 
     Bitmap BuildBitmap(bool full)
     {
@@ -558,7 +563,7 @@ sealed class MainForm : Form
             if(IsRgb())RgbAt(sx,sy,out r,out g,out b); else if(IsYuv())YuvAt(sx,sy,out r,out g,out b); else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
         Marshal.Copy(pix,0,bd.Scan0,pix.Length); bmp.UnlockBits(bd); RotateBmp(bmp); return bmp;
     }
-    void RotateBmp(Bitmap b){if(p.Rotate==90)b.RotateFlip(RotateFlipType.Rotate90FlipNone);else if(p.Rotate==180)b.RotateFlip(RotateFlipType.Rotate180FlipNone);else if(p.Rotate==270)b.RotateFlip(RotateFlipType.Rotate270FlipNone);}    
+    void RotateBmp(Bitmap b){if(p.Rotate==90)b.RotateFlip(RotateFlipType.Rotate90FlipNone);else if(p.Rotate==180)b.RotateFlip(RotateFlipType.Rotate180FlipNone);else if(p.Rotate==270)b.RotateFlip(RotateFlipType.Rotate270FlipNone);}
     void Render(bool fitToWindow)
     {
         if(data==null)return; status.Text="Rendering full image..."; ThreadPool.QueueUserWorkItem(delegate{try{Bitmap bmp=BuildBitmap(true); BeginInvoke((Action)delegate{ShowSingleMode(); if(current!=null)current.Dispose(); current=bmp; zoom=fitToWindow?FitZoomFor(current):1.0; pic.Image=current; ApplyZoom(); imagePanel.AutoScrollPosition=new Point(0,0); UpdateStatus();});}catch(Exception ex){ShowErr(ex);}});
@@ -595,7 +600,7 @@ sealed class MainForm : Form
         string f=q.Format==null?"":q.Format.ToUpperInvariant(); bool even=(q.W%2==0)&&(q.H%2==0);
         if(IsRawFormatName(f))
         {
-            AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}            
+            AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}
             hint="RAW output is locked: decoded RGB cannot restore original sensor RAW.";
         }
         else if(IsRgb8FormatName(f))
@@ -605,7 +610,7 @@ sealed class MainForm : Form
         }
         else if(IsRgb16FormatName(f))
         {
-            AddMany(allowed,rgb16Exports); AddMany(allowed,rgb8Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}            
+            AddMany(allowed,rgb16Exports); AddMany(allowed,rgb8Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}
             hint="RAW output is locked: RGB48/BGR48 cannot restore sensor Bayer RAW.";
         }
         else if(IsYuv8FormatName(f))
@@ -746,9 +751,27 @@ sealed class MainForm : Form
         int pos=y*stride+x*3;
         b=pix[pos];g=pix[pos+1];r=pix[pos+2];
     }
-    static int Y601(int r,int g,int b){return Clamp(((66*r+129*g+25*b+128)>>8)+16);}
-    static int U601(int r,int g,int b){return Clamp(((-38*r-74*g+112*b+128)>>8)+128);}
-    static int V601(int r,int g,int b){return Clamp(((112*r-94*g-18*b+128)>>8)+128);}
+    static string YuvMatrixName(int i){switch(i){case 1:return "BT.709";case 2:return "BT.2020";default:return "BT.601";}}
+    static void YuvCoeffs(int matrix,out double kr,out double kb){if(matrix==1){kr=0.2126;kb=0.0722;}else if(matrix==2){kr=0.2627;kb=0.0593;}else{kr=0.299;kb=0.114;}}
+    static byte ClampD(double v){return Clamp((int)Math.Round(v));}
+    static void YuvToRgb(int yv,int uv,int vv,int matrix,bool full,out byte r,out byte g,out byte b)
+    {
+        double kr,kb;YuvCoeffs(matrix,out kr,out kb);double kg=1.0-kr-kb;
+        double y=full?yv:(yv-16)*255.0/219.0, u=(uv-128)*(full?1.0:255.0/224.0), v=(vv-128)*(full?1.0:255.0/224.0);
+        double rr=y+(2.0-2.0*kr)*v;
+        double bb=y+(2.0-2.0*kb)*u;
+        double gg=y-(kb*(2.0-2.0*kb)/kg)*u-(kr*(2.0-2.0*kr)/kg)*v;
+        r=ClampD(rr);g=ClampD(gg);b=ClampD(bb);
+    }
+    void RgbToYuv(int r,int g,int b,out int yv,out int uv,out int vv)
+    {
+        double kr,kb;YuvCoeffs(YuvMatrixIndex(),out kr,out kb);double kg=1.0-kr-kb;
+        double y=kr*r+kg*g+kb*b;
+        double u=(b-y)/(2.0-2.0*kb);
+        double v=(r-y)/(2.0-2.0*kr);
+        if(YuvFullRange()){yv=ClampD(y);uv=ClampD(u+128);vv=ClampD(v+128);}
+        else{yv=ClampD(16.0+219.0*y/255.0);uv=ClampD(128.0+224.0*u/255.0);vv=ClampD(128.0+224.0*v/255.0);}
+    }
     static char BayerSiteForPattern(int pattern,int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
     byte[] EncodeConvertedFrame(Bitmap bmp,string kind)
     {
@@ -785,13 +808,13 @@ sealed class MainForm : Form
         if(kind=="P010")
         {
             byte[] outb=new byte[w*h*3]; int o=0;
-            for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);ushort yy=(ushort)(Y601(r,g,b)<<8);outb[o++]=(byte)(yy&255);outb[o++]=(byte)(yy>>8);}            
-            for(int y=0;y<h;y+=2)for(int x=0;x<w;x+=2){int u,v;AvgUv(pix,stride,w,h,x,y,out u,out v);ushort uu=(ushort)(u<<8),vv=(ushort)(v<<8);outb[o++]=(byte)(uu&255);outb[o++]=(byte)(uu>>8);outb[o++]=(byte)(vv&255);outb[o++]=(byte)(vv>>8);}            
+            for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);int yy8,uu8,vv8;RgbToYuv(r,g,b,out yy8,out uu8,out vv8);ushort yy=(ushort)(yy8<<8);outb[o++]=(byte)(yy&255);outb[o++]=(byte)(yy>>8);}
+            for(int y=0;y<h;y+=2)for(int x=0;x<w;x+=2){int u,v;AvgUv(pix,stride,w,h,x,y,out u,out v);ushort uu=(ushort)(u<<8),vv=(ushort)(v<<8);outb[o++]=(byte)(uu&255);outb[o++]=(byte)(uu>>8);outb[o++]=(byte)(vv&255);outb[o++]=(byte)(vv>>8);}
             return outb;
         }
         byte[] yplane=new byte[w*h];
         int cw=(w+1)/2,ch=(h+1)/2; byte[] uplane=new byte[cw*ch],vplane=new byte[cw*ch];
-        for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);yplane[y*w+x]=(byte)Y601(r,g,b);}        
+        for(int y=0;y<h;y++)for(int x=0;x<w;x++){int r,g,b;BgrAt(pix,stride,x,y,out r,out g,out b);int yy8,uu8,vv8;RgbToYuv(r,g,b,out yy8,out uu8,out vv8);yplane[y*w+x]=(byte)yy8;}
         for(int y=0;y<h;y+=2)for(int x=0;x<w;x+=2){int u,v;AvgUv(pix,stride,w,h,x,y,out u,out v);int ci=(y/2)*cw+(x/2);uplane[ci]=(byte)u;vplane[ci]=(byte)v;}
         if(kind=="NV21"||kind=="NV12")
         {
@@ -802,14 +825,14 @@ sealed class MainForm : Form
         else
         {
             byte[] outb=new byte[yplane.Length+uplane.Length+vplane.Length]; Buffer.BlockCopy(yplane,0,outb,0,yplane.Length);
-            if(kind=="YV12"){Buffer.BlockCopy(vplane,0,outb,yplane.Length,vplane.Length);Buffer.BlockCopy(uplane,0,outb,yplane.Length+vplane.Length,uplane.Length);}else{Buffer.BlockCopy(uplane,0,outb,yplane.Length,uplane.Length);Buffer.BlockCopy(vplane,0,outb,yplane.Length+uplane.Length,vplane.Length);}            
+            if(kind=="YV12"){Buffer.BlockCopy(vplane,0,outb,yplane.Length,vplane.Length);Buffer.BlockCopy(uplane,0,outb,yplane.Length+vplane.Length,uplane.Length);}else{Buffer.BlockCopy(uplane,0,outb,yplane.Length,uplane.Length);Buffer.BlockCopy(vplane,0,outb,yplane.Length+uplane.Length,vplane.Length);}
             return outb;
         }
     }
-    static void AvgUv(byte[] pix,int stride,int w,int h,int x,int y,out int u,out int v)
+    void AvgUv(byte[] pix,int stride,int w,int h,int x,int y,out int u,out int v)
     {
         int us=0,vs=0,c=0;
-        for(int yy=y;yy<y+2&&yy<h;yy++)for(int xx=x;xx<x+2&&xx<w;xx++){int r,g,b;BgrAt(pix,stride,xx,yy,out r,out g,out b);us+=U601(r,g,b);vs+=V601(r,g,b);c++;}
+        for(int yy=y;yy<y+2&&yy<h;yy++)for(int xx=x;xx<x+2&&xx<w;xx++){int r,g,b;BgrAt(pix,stride,xx,yy,out r,out g,out b);int yy8,uu8,vv8;RgbToYuv(r,g,b,out yy8,out uu8,out vv8);us+=uu8;vs+=vv8;c++;}
         u=us/Math.Max(1,c);v=vs/Math.Max(1,c);
     }
     byte[] EncodeRawDump(byte[] pix,int stride,int w,int h,string kind)
@@ -850,6 +873,44 @@ sealed class MainForm : Form
         for(int y=0;y<h;y++)for(int x=0;x<w;x++){int val=RawSampleFromRgb(pix,stride,x,y,bits,pattern,max), bit=x*bits, bo=y*row+bit/8, sh=bit&7; int word=val<<sh; outb[bo]|=(byte)word; if(bo+1<outb.Length)outb[bo+1]|=(byte)(word>>8); if(bo+2<outb.Length)outb[bo+2]|=(byte)(word>>16);}
         return outb;
     }
+    static string JsonEscape(string s){if(s==null)return "";return s.Replace("\\","\\\\").Replace("\"","\\\"").Replace("\r","\\r").Replace("\n","\\n");}
+    string BoolJson(bool v){return v?"true":"false";}
+    string SidecarPath(string outPath){return outPath+".json";}
+    void WriteSidecar(string outPath,string outKind,int outW,int outH,Params src,string sourcePath)
+    {
+        if(src==null)src=p;
+        var sb=new StringBuilder();
+        sb.AppendLine("{");
+        sb.AppendLine("  \"tool\": \"FastViewer\",");
+        sb.AppendLine("  \"sidecar_version\": 1,");
+        sb.AppendLine("  \"created_utc\": \""+DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")+"\",");
+        sb.AppendLine("  \"source\": {");
+        sb.AppendLine("    \"path\": \""+JsonEscape(sourcePath)+"\",");
+        sb.AppendLine("    \"width\": "+src.W+",");
+        sb.AppendLine("    \"height\": "+src.H+",");
+        sb.AppendLine("    \"format\": \""+JsonEscape(src.Format)+"\",");
+        sb.AppendLine("    \"stride\": "+src.Stride+",");
+        sb.AppendLine("    \"offset\": "+src.Offset+",");
+        sb.AppendLine("    \"endian\": \""+(src.Little?"little":"big")+"\",");
+        sb.AppendLine("    \"alignment\": \""+(src.Lsb?"lsb":"msb")+"\",");
+        sb.AppendLine("    \"bayer\": \""+PatternName(src.Pattern)+"\",");
+        sb.AppendLine("    \"bits\": "+src.Bits+",");
+        sb.AppendLine("    \"rotate\": "+src.Rotate+",");
+        sb.AppendLine("    \"yuv_matrix\": \""+YuvMatrixName(src.YuvMatrix)+"\",");
+        sb.AppendLine("    \"yuv_range\": \""+(src.YuvFullRange?"full":"limited")+"\"");
+        sb.AppendLine("  },");
+        sb.AppendLine("  \"output\": {");
+        sb.AppendLine("    \"path\": \""+JsonEscape(outPath)+"\",");
+        sb.AppendLine("    \"width\": "+outW+",");
+        sb.AppendLine("    \"height\": "+outH+",");
+        sb.AppendLine("    \"format\": \""+JsonEscape(outKind)+"\",");
+        sb.AppendLine("    \"extension\": \""+JsonEscape(Path.GetExtension(outPath))+"\",");
+        sb.AppendLine("    \"yuv_matrix\": \""+YuvMatrixName(YuvMatrixIndex())+"\",");
+        sb.AppendLine("    \"yuv_range\": \""+(YuvFullRange()?"full":"limited")+"\"");
+        sb.AppendLine("  }");
+        sb.AppendLine("}");
+        File.WriteAllText(SidecarPath(outPath),sb.ToString(),Encoding.UTF8);
+    }
     void ExportImage()
     {
         if(multiMode){ExportManyImages();return;}
@@ -870,7 +931,7 @@ sealed class MainForm : Form
             bool forceExt=d.FilterIndex<=ExportAllowedCount();
             string outPath=NormalizeExportPath(d.FileName,kind,forceExt);
             status.Text="Exporting "+kind+"...";
-            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(outPath,ExportImageFormatFor(kind)); else File.WriteAllBytes(outPath,EncodeConvertedFrame(b,kind)); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+outPath;});}catch(Exception ex){ShowErr(ex);}});
+            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(outPath,ExportImageFormatFor(kind)); else File.WriteAllBytes(outPath,EncodeConvertedFrame(b,kind)); WriteSidecar(outPath,kind,b.Width,b.Height,p,openedPath); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+outPath;});}catch(Exception ex){ShowErr(ex);}});
         }
     }
     void ExportManyImages()
@@ -888,7 +949,7 @@ sealed class MainForm : Form
                 {
                     string name=Path.GetFileNameWithoutExtension(item.Path);
                     string outPath=UniquePath(Path.Combine(folder,name+ext));
-                    if(imageOut)item.Bitmap.Save(outPath,fmt); else File.WriteAllBytes(outPath,EncodeConvertedFrame(item.Bitmap,kind));
+                    if(imageOut)item.Bitmap.Save(outPath,fmt); else File.WriteAllBytes(outPath,EncodeConvertedFrame(item.Bitmap,kind)); WriteSidecar(outPath,kind,item.Bitmap.Width,item.Bitmap.Height,item.P,item.Path);
                     n++;
                     int shown=n;
                     BeginInvoke((Action)delegate{status.Text="Exporting "+shown+" / "+galleryItems.Count+" "+kind+" files...";});
@@ -898,7 +959,6 @@ sealed class MainForm : Form
         }
     }
     void ShowErr(Exception ex){BeginInvoke((Action)delegate{status.Text="Failed.";MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);});}
-    protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
+    protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}
 }
 }
-
