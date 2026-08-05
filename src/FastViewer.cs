@@ -58,10 +58,19 @@ sealed class RoundedPanel : Panel
     public Color FillColor=Color.White;
     public Color BorderColor=Color.FromArgb(226,226,232);
     public int Radius=18;
-    public RoundedPanel(){DoubleBuffered=true;ResizeRedraw=true;BackColor=Color.White;}
+    public RoundedPanel(){DoubleBuffered=true;ResizeRedraw=true;BackColor=Color.Transparent;}
+    protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);UpdateRegion();}
+    void UpdateRegion()
+    {
+        if(Width<=0||Height<=0)return;
+        using(GraphicsPath p=UiShape.RoundRect(new Rectangle(0,0,Width,Height),Radius))Region=new Region(p);
+    }
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        if(Parent!=null)e.Graphics.Clear(Parent.BackColor); else base.OnPaintBackground(e);
+    }
     protected override void OnPaint(PaintEventArgs e)
     {
-        base.OnPaint(e);
         e.Graphics.SmoothingMode=SmoothingMode.AntiAlias;
         Rectangle r=new Rectangle(0,0,Width-1,Height-1);
         if(r.Width<=0||r.Height<=0)return;
@@ -72,6 +81,7 @@ sealed class RoundedPanel : Panel
             e.Graphics.FillPath(b,p);
             e.Graphics.DrawPath(pen,p);
         }
+        base.OnPaint(e);
     }
 }
 
@@ -83,7 +93,9 @@ sealed class RoundedButton : Button
     public Color TextColor=Color.FromArgb(29,29,31);
     public int Radius=12;
     bool hovering;
-    public RoundedButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;DoubleBuffered=true;Cursor=Cursors.Hand;TabStop=true;}
+    public RoundedButton(){FlatStyle=FlatStyle.Flat;FlatAppearance.BorderSize=0;DoubleBuffered=true;Cursor=Cursors.Hand;TabStop=true;UseVisualStyleBackColor=false;}
+    protected override void OnSizeChanged(EventArgs e){base.OnSizeChanged(e);UpdateRegion();}
+    void UpdateRegion(){if(Width<=0||Height<=0)return;using(GraphicsPath p=UiShape.RoundRect(new Rectangle(0,0,Width,Height),Radius))Region=new Region(p);}
     protected override void OnMouseEnter(EventArgs e){hovering=true;Invalidate();base.OnMouseEnter(e);}
     protected override void OnMouseLeave(EventArgs e){hovering=false;Invalidate();base.OnMouseLeave(e);}
     protected override void OnPaint(PaintEventArgs e)
@@ -150,7 +162,7 @@ sealed class MainForm : Form
 
         AddTitle(left,"FastViewer","Camera frame lab",0);
         AddSection(left,"FILE",2);
-        pathBox.Dock=DockStyle.Fill; StyleTextBox(pathBox); left.Controls.Add(pathBox,0,3); left.SetColumnSpan(pathBox,2);
+        StyleTextBox(pathBox); var pathHost=FieldHost(pathBox); left.Controls.Add(pathHost,0,3); left.SetColumnSpan(pathHost,2);
         AddButton(left,"Browse / Multi",delegate{Browse();},0,4,1); AddButton(left,"Open",delegate{OpenFileNow();},1,4,1);
 
         AddSection(left,"FRAME",6);
@@ -195,11 +207,12 @@ sealed class MainForm : Form
     void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=70,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",20F,FontStyle.Bold),ForeColor=Color.FromArgb(29,29,31)};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=24,ForeColor=Color.FromArgb(110,110,115),Font=new Font("Segoe UI",9.5F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
     void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=32,Padding=new Padding(0,14,0,0),Font=new Font("Segoe UI Semibold",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(142,142,147),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
     void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
-    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); b.Text=v; b.Dock=DockStyle.Fill; b.Margin=new Padding(0,4,0,4); StyleTextBox(b); t.Controls.Add(b,1,r);}    
-    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); b.Dock=DockStyle.Fill; b.Margin=new Padding(0,4,0,4); StyleCombo(b); t.Controls.Add(b,1,r);}    
+    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
+    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White,Margin=new Padding(0,5,10,5)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
     void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Height=36,Margin=new Padding(c==0?0:6,5,c==0?6:0,5),Font=new Font("Segoe UI Semibold",9F)}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
-    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.FixedSingle;b.BackColor=Color.FromArgb(250,250,252);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
-    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.FromArgb(250,250,252);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
+    Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.FromArgb(248,248,250),BackColor=Color.White,BorderColor=Color.FromArgb(225,225,230),Radius=13,Margin=new Padding(0,4,0,4),Padding=new Padding(11,6,9,5)}; child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
+    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.FromArgb(248,248,250);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
+    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.FromArgb(248,248,250);b.ForeColor=Color.FromArgb(29,29,31);b.Font=new Font("Segoe UI",9.2F);} 
     void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=13;rb.BorderColor=primary?Color.FromArgb(0,113,227):Color.FromArgb(218,218,224);rb.FillNormal=primary?Color.FromArgb(0,113,227):Color.FromArgb(242,242,247);rb.FillHover=primary?Color.FromArgb(0,102,204):Color.FromArgb(232,232,237);rb.TextColor=primary?Color.White:Color.FromArgb(29,29,31);}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.FromArgb(0,113,227):Color.FromArgb(242,242,247);b.ForeColor=primary?Color.White:Color.FromArgb(29,29,31);}}
 
     void EnableDrop(Control c)
