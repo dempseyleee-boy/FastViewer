@@ -146,9 +146,14 @@ YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的�
 C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /platform:x64 /optimize+ /win32icon:assets\FastViewer.ico /reference:System.Windows.Forms.dll /reference:System.Drawing.dll /out:dist\FastViewer.exe src\FastViewer.cs
 ```
 
+## 交互总结
+
+完整需求演进、关键决策和问题修复记录见：[docs/interaction-summary.md](docs/interaction-summary.md)。
+
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 
