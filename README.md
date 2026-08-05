@@ -209,5 +209,5 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-local-sample-test.
 
 ## License
 
-见仓库中的 `LICENSE`。
+本项目使用 MIT License，见仓库中的 `LICENSE`。
 
