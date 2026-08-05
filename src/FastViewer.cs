@@ -186,6 +186,7 @@ sealed class MainForm : Form
 
         var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.2F)};
         left.Controls.Add(hint,0,30); left.SetColumnSpan(hint,2);
+        FitLeftRowsToContent(left,new int[]{0,2,3,4,6,7,8,9,10,12,13,14,15,17,18,19,20,21,22,23,25,26,27,28,30});
 
         var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(28,22,28,22)};
         right.RowStyles.Add(new RowStyle(SizeType.Absolute,70));
@@ -205,6 +206,16 @@ sealed class MainForm : Form
         EnableDrop(this); EnableDrop(root); EnableDrop(leftShell); EnableDrop(left); EnableDrop(pathBox); EnableDrop(right); EnableDrop(header); EnableDrop(viewerFrame); EnableDrop(imagePanel); EnableDrop(pic); EnableDrop(gallery); EnableDrop(status);
     }
 
+    void FitLeftRowsToContent(TableLayoutPanel t,int[] usedRows)
+    {
+        t.RowStyles.Clear();
+        for(int r=0;r<t.RowCount;r++)
+        {
+            bool used=false;
+            for(int i=0;i<usedRows.Length;i++)if(usedRows[i]==r){used=true;break;}
+            t.RowStyles.Add(used?new RowStyle(SizeType.AutoSize):new RowStyle(SizeType.Absolute,0));
+        }
+    }
     void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=76,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=Color.Black};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=26,ForeColor=Color.FromArgb(102,102,102),Font=new Font("Consolas",8.8F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
     void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=26,Padding=new Padding(0,9,0,0),Font=new Font("Consolas",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
     void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
