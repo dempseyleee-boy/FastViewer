@@ -265,6 +265,8 @@ Little Endian + LSB aligned
 
 - 点击 `Export Image`。
 - 选择输出路径。
+- 保存对话框的“保存类型”会同步列出当前允许的全部导出格式，例如 `BGR48 frame dump (*.BGR48)`、`RGB48 frame dump (*.RGB48)`、`NV21 frame dump (*.NV21)`。
+- 选择哪个保存类型，就会按哪个格式编码，并自动补对应后缀。
 - 导出当前图像到选定格式。
 
 多图模式：
@@ -285,7 +287,7 @@ image_3280x2464.RAW14_GRBG_16B
 image_3280x2464.RAW10_RGGB_PACKED
 ```
 
-RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀。
+RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀。单图导出时，Windows 保存对话框里的每个 Camera dump 类型都有自己的 filter，例如 `BGR48` 对应 `*.BGR48`，不再只显示当前下拉框选中的单一类型。
 
 ### RAW 导出语义
 
@@ -393,6 +395,7 @@ face_1920x1280.NV21
 - 奇数宽高导出为 `NV21 / NV12 / I420 / YV12 / YUV420P / P010`：锁定。YUV420 / P010 要求偶数宽高。
 
 状态栏会显示类似 `RAW output is locked...` 的提示，说明被隐藏格式的原因。
+
 ## 后续可扩展方向
 
 - 为未知后缀文件增加弹窗询问策略。

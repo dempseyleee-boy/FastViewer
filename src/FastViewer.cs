@@ -562,9 +562,10 @@ sealed class MainForm : Form
     void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite);}
     string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
     bool IsImageExportKind(string k){return k=="PNG"||k=="BMP"||k=="JPEG"||k=="TIFF";}
-    string ExportExt()
+    string ExportExt(){return ExportExtFor(ExportKind());}
+    string ExportExtFor(string kind)
     {
-        string k=ExportKind();
+        string k=(kind??"PNG").ToUpperInvariant();
         if(k=="JPEG")return ".jpg";
         if(k=="TIFF")return ".tif";
         if(k=="PNG"||k=="BMP")return "."+k.ToLowerInvariant();
@@ -576,8 +577,51 @@ sealed class MainForm : Form
         }
         return "."+k;
     }
-    ImageFormat ExportImageFormat(){string k=ExportKind();if(k=="BMP")return ImageFormat.Bmp;if(k=="JPEG")return ImageFormat.Jpeg;if(k=="TIFF")return ImageFormat.Tiff;return ImageFormat.Png;}
-    string ExportFilter(){string k=ExportKind();if(k=="BMP")return "BMP image|*.bmp|All files|*.*";if(k=="JPEG")return "JPEG image|*.jpg;*.jpeg|All files|*.*";if(k=="TIFF")return "TIFF image|*.tif;*.tiff|All files|*.*";if(k=="PNG")return "PNG image|*.png|All files|*.*";return k+" frame dump|*"+ExportExt()+"|All files|*.*";}
+    ImageFormat ExportImageFormat(){return ExportImageFormatFor(ExportKind());}
+    ImageFormat ExportImageFormatFor(string kind){string k=(kind??"PNG").ToUpperInvariant();if(k=="BMP")return ImageFormat.Bmp;if(k=="JPEG")return ImageFormat.Jpeg;if(k=="TIFF")return ImageFormat.Tiff;return ImageFormat.Png;}
+    string ExportFilterEntryFor(string kind)
+    {
+        string k=(kind??"PNG").ToUpperInvariant();
+        string ext=ExportExtFor(k);
+        if(k=="BMP")return "BMP image (*.bmp)|*.bmp";
+        if(k=="JPEG")return "JPEG image (*.jpg;*.jpeg)|*.jpg;*.jpeg";
+        if(k=="TIFF")return "TIFF image (*.tif;*.tiff)|*.tif;*.tiff";
+        if(k=="PNG")return "PNG image (*.png)|*.png";
+        return k+" frame dump (*"+ext+")|*"+ext;
+    }
+    string ExportFilterForAllowed()
+    {
+        var parts=new List<string>();
+        for(int i=0;i<exportBox.Items.Count;i++)
+        {
+            string k=exportBox.Items[i].ToString().ToUpperInvariant();
+            if(CurrentExportAllowed(k))parts.Add(ExportFilterEntryFor(k));
+        }
+        if(parts.Count==0)parts.Add(ExportFilterEntryFor(ExportKind()));
+        parts.Add("All files (*.*)|*.*");
+        return String.Join("|",parts.ToArray());
+    }
+    int ExportAllowedCount(){return exportBox.Items.Count;}
+    int ExportFilterIndexFor(string kind)
+    {
+        for(int i=0;i<exportBox.Items.Count;i++)if(String.Equals(exportBox.Items[i].ToString(),kind,StringComparison.OrdinalIgnoreCase))return i+1;
+        return 1;
+    }
+    string ExportKindFromFilterIndex(int idx)
+    {
+        int i=idx-1;
+        if(i>=0&&i<exportBox.Items.Count)return exportBox.Items[i].ToString().ToUpperInvariant();
+        return ExportKind();
+    }
+    string NormalizeExportPath(string path,string kind,bool forceExt)
+    {
+        if(!forceExt)return path;
+        string ext=ExportExtFor(kind);
+        string cur=Path.GetExtension(path);
+        if(String.Equals(cur,ext,StringComparison.OrdinalIgnoreCase))return path;
+        if(String.IsNullOrEmpty(cur))return path+ext;
+        return Path.ChangeExtension(path,ext);
+    }
     static string UniquePath(string path)
     {
         if(!File.Exists(path))return path;
@@ -713,14 +757,21 @@ sealed class MainForm : Form
         if(data==null){MessageBox.Show(this,"Open a file first.",Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
         using(var d=new SaveFileDialog())
         {
-            string kind=ExportKind();
-            if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
-            d.Title="Export "+kind;
-            d.Filter=ExportFilter();
-            d.FileName=Path.GetFileNameWithoutExtension(openedPath)+ExportExt();
+            string initialKind=ExportKind();
+            if(!CurrentExportAllowed(initialKind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+            d.Title="Export image/frame";
+            d.Filter=ExportFilterForAllowed();
+            d.FilterIndex=ExportFilterIndexFor(initialKind);
+            d.FileName=Path.GetFileNameWithoutExtension(openedPath)+ExportExtFor(initialKind);
+            d.DefaultExt=ExportExtFor(initialKind).TrimStart('.');
+            d.AddExtension=true;
             if(d.ShowDialog(this)!=DialogResult.OK)return;
+            string kind=ExportKindFromFilterIndex(d.FilterIndex);
+            if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
+            bool forceExt=d.FilterIndex<=ExportAllowedCount();
+            string outPath=NormalizeExportPath(d.FileName,kind,forceExt);
             status.Text="Exporting "+kind+"...";
-            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(d.FileName,ExportImageFormat()); else File.WriteAllBytes(d.FileName,EncodeConvertedFrame(b,kind)); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+d.FileName;});}catch(Exception ex){ShowErr(ex);}});
+            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(outPath,ExportImageFormatFor(kind)); else File.WriteAllBytes(outPath,EncodeConvertedFrame(b,kind)); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+outPath;});}catch(Exception ex){ShowErr(ex);}});
         }
     }
     void ExportManyImages()
@@ -730,7 +781,7 @@ sealed class MainForm : Form
         {
             d.Description="Choose export folder for "+galleryItems.Count+" "+ExportKind()+" files";
             if(d.ShowDialog(this)!=DialogResult.OK)return;
-            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind(); if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} bool imageOut=IsImageExportKind(kind);
+            string folder=d.SelectedPath; string kind=ExportKind(); string ext=ExportExtFor(kind); ImageFormat fmt=ExportImageFormatFor(kind); if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} bool imageOut=IsImageExportKind(kind);
             status.Text="Exporting 0 / "+galleryItems.Count+" "+kind+" files...";
             ThreadPool.QueueUserWorkItem(delegate{try{
                 int n=0;
@@ -751,19 +802,4 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
 }
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
