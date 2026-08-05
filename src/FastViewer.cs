@@ -43,9 +43,14 @@ sealed class MainForm : Form
     TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
     ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), exportBox=new ComboBox();
     Panel imagePanel=new Panel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
-    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>();
+    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
     string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"};
+    string[] imageExports={"PNG","BMP","JPEG","TIFF"};
+    string[] rgb8Exports={"RGB24","BGR24","RGBA32","BGRA32"};
+    string[] rgb16Exports={"RGB48","BGR48"};
+    string[] yuv8Exports={"NV21","NV12","I420","YV12","YUV420P"};
+    string[] yuv10Exports={"P010"};
 
     public MainForm(string initial)
     {
@@ -94,7 +99,7 @@ sealed class MainForm : Form
 
         AddSection(left,"VIEW",25);
         AddButton(left,"Fit Window",delegate{FitWindow();},0,26,2);
-        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(new object[]{"PNG","BMP","JPEG","TIFF","RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"}); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
+        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
         AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
 
         var hint=new Label{Text="Filename suffix is case-insensitive\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nMulti-select files in Browse\r\nCtrl + mouse wheel = zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,14,0,0),ForeColor=Color.FromArgb(144,153,166)};
@@ -210,12 +215,13 @@ sealed class MainForm : Form
         Select(fmtBox,q.Format); Select(patternBox,PatternName(q.Pattern));
         endianBox.SelectedIndex=q.Little?0:1; alignBox.SelectedIndex=q.Lsb?0:1;
         strideBox.Text=q.Stride>0?q.Stride.ToString():"";
+        UpdateExportChoices(new Params[]{q});
     }
     void ApplyFileName(string path)
     {
         Params q=DetectParamsFromFile(path);
         ApplyDetectedParams(q);
-        status.Text="Detected "+Path.GetExtension(path).ToLowerInvariant();
+        status.Text=WithExportHint("Detected "+Path.GetExtension(path).ToLowerInvariant());
     }
     static int PatternIndex(string pat){string p=pat.ToUpperInvariant(); if(p=="RGGB")return 1;if(p=="BGGR")return 2;if(p=="GBRG")return 3;return 0;}
     static string PatternName(int index){switch(index){case 1:return "RGGB";case 2:return "BGGR";case 3:return "GBRG";default:return "GRBG";}}
@@ -306,7 +312,7 @@ sealed class MainForm : Form
                 if(len<expected)throw new Exception(Path.GetFileName(fp)+" too small: "+len+" bytes, expected at least "+expected+".");
                 jobs.Add(new ViewerItem{Path=fp,P=q});
             }
-            openedPaths=paths; openedPath=paths[paths.Length-1]; p=jobs[jobs.Count-1].P; pathBox.Text=paths.Length+" files selected";
+            UpdateExportChoicesForItems(jobs); openedPaths=paths; openedPath=paths[paths.Length-1]; p=jobs[jobs.Count-1].P; pathBox.Text=paths.Length+" files selected";
             ShowMultiStart();
             status.Text="Rendering 0 / "+jobs.Count+" images...";
             ThreadPool.QueueUserWorkItem(delegate{
@@ -473,7 +479,87 @@ sealed class MainForm : Form
         return Math.Max(0.01,Math.Min(16.0,z));
     }
     void ApplyZoom(){if(current==null)return; pic.Size=new Size(Math.Max(1,(int)Math.Round(current.Width*zoom)),Math.Max(1,(int)Math.Round(current.Height*zoom)));}
-    void UpdateStatus(){if(multiMode){status.Text="Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%";return;} if(current==null||p==null)return; status.Text=Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite;}
+    static bool Has(string[] arr,string s){foreach(string x in arr)if(String.Equals(x,s,StringComparison.OrdinalIgnoreCase))return true;return false;}
+    static bool HasList(List<string> arr,string s){foreach(string x in arr)if(String.Equals(x,s,StringComparison.OrdinalIgnoreCase))return true;return false;}
+    static void AddUnique(List<string> arr,string s){if(!HasList(arr,s))arr.Add(s);}
+    void AddMany(List<string> arr,string[] values){foreach(string s in values)AddUnique(arr,s);}
+    bool IsRawFormatName(string f){return f!=null&&f.StartsWith("RAW");}
+    bool IsRgb8FormatName(string f){return f=="RGB24"||f=="BGR24"||f=="RGBA32"||f=="BGRA32";}
+    bool IsRgb16FormatName(string f){return f=="RGB48"||f=="BGR48";}
+    bool IsYuv8FormatName(string f){return f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P";}
+    bool IsP010FormatName(string f){return f=="P010";}
+    List<string> AllowedExportsFor(Params q,out string hint)
+    {
+        var allowed=new List<string>(); hint="";
+        AddMany(allowed,imageExports);
+        if(q==null){hint="Open a file to enable frame-dump exports.";return allowed;}
+        string f=q.Format==null?"":q.Format.ToUpperInvariant(); bool even=(q.W%2==0)&&(q.H%2==0);
+        if(IsRawFormatName(f))
+        {
+            AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}            
+            hint="RAW output is locked: decoded RGB cannot restore original sensor RAW.";
+        }
+        else if(IsRgb8FormatName(f))
+        {
+            AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports); if(even)AddMany(allowed,yuv8Exports);
+            hint="RAW/P010 outputs are locked: they would be synthetic or fake higher bit-depth data.";
+        }
+        else if(IsRgb16FormatName(f))
+        {
+            AddMany(allowed,rgb16Exports); AddMany(allowed,rgb8Exports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}            
+            hint="RAW output is locked: RGB48/BGR48 cannot restore sensor Bayer RAW.";
+        }
+        else if(IsYuv8FormatName(f))
+        {
+            AddMany(allowed,yuv8Exports); AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports);
+            hint="RAW/P010 outputs are locked: 8-bit YUV cannot restore RAW or true 10-bit data.";
+        }
+        else if(IsP010FormatName(f))
+        {
+            AddMany(allowed,yuv10Exports); AddMany(allowed,yuv8Exports); AddMany(allowed,rgb8Exports); AddMany(allowed,rgb16Exports);
+            hint="RAW output is locked: P010 cannot restore sensor Bayer RAW.";
+        }
+        else
+        {
+            hint="Unknown source format: only image exports are enabled.";
+        }
+        if(!even && (IsRawFormatName(f)||IsRgb8FormatName(f)||IsRgb16FormatName(f)))hint+=" YUV420/P010 exports need even width and height.";
+        return allowed;
+    }
+    List<string> IntersectExports(List<string> a,List<string> b)
+    {
+        var r=new List<string>(); foreach(string s in a)if(HasList(b,s))r.Add(s); return r;
+    }
+    void UpdateExportChoicesForItems(List<ViewerItem> items)
+    {
+        var ps=new List<Params>(); foreach(ViewerItem it in items)ps.Add(it.P); UpdateExportChoices(ps.ToArray());
+    }
+    void UpdateExportChoices(Params[] ps)
+    {
+        string old=ExportKind(); string hint=""; List<string> allowed=null;
+        if(ps==null||ps.Length==0)allowed=AllowedExportsFor(null,out hint);
+        else
+        {
+            for(int i=0;i<ps.Length;i++)
+            {
+                string h; List<string> one=AllowedExportsFor(ps[i],out h); if(hint.Length==0)hint=h;
+                allowed=allowed==null?one:IntersectExports(allowed,one);
+            }
+            if(ps.Length>1)hint="Multi-image mode: only formats valid for every selected file are shown. "+hint;
+        }
+        if(allowed==null||allowed.Count==0)allowed=AllowedExportsFor(null,out hint);
+        exportBox.BeginUpdate(); exportBox.Items.Clear(); foreach(string s in allowed)exportBox.Items.Add(s); exportBox.EndUpdate();
+        int sel=0; for(int i=0;i<exportBox.Items.Count;i++)if(String.Equals(exportBox.Items[i].ToString(),old,StringComparison.OrdinalIgnoreCase)){sel=i;break;}
+        if(exportBox.Items.Count>0)exportBox.SelectedIndex=sel;
+        exportLockHint=hint;
+    }
+    bool CurrentExportAllowed(string kind)
+    {
+        for(int i=0;i<exportBox.Items.Count;i++)if(String.Equals(exportBox.Items[i].ToString(),kind,StringComparison.OrdinalIgnoreCase))return true;
+        return false;
+    }
+    string WithExportHint(string s){return String.IsNullOrEmpty(exportLockHint)?s:(s+"  |  "+exportLockHint);}
+    void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite);}
     string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
     bool IsImageExportKind(string k){return k=="PNG"||k=="BMP"||k=="JPEG"||k=="TIFF";}
     string ExportExt()
@@ -628,6 +714,7 @@ sealed class MainForm : Form
         using(var d=new SaveFileDialog())
         {
             string kind=ExportKind();
+            if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;}
             d.Title="Export "+kind;
             d.Filter=ExportFilter();
             d.FileName=Path.GetFileNameWithoutExtension(openedPath)+ExportExt();
@@ -643,7 +730,7 @@ sealed class MainForm : Form
         {
             d.Description="Choose export folder for "+galleryItems.Count+" "+ExportKind()+" files";
             if(d.ShowDialog(this)!=DialogResult.OK)return;
-            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind(); bool imageOut=IsImageExportKind(kind);
+            string folder=d.SelectedPath, ext=ExportExt(); ImageFormat fmt=ExportImageFormat(); string kind=ExportKind(); if(!CurrentExportAllowed(kind)){MessageBox.Show(this,"This export route is locked. "+exportLockHint,Text,MessageBoxButtons.OK,MessageBoxIcon.Information);return;} bool imageOut=IsImageExportKind(kind);
             status.Text="Exporting 0 / "+galleryItems.Count+" "+kind+" files...";
             ThreadPool.QueueUserWorkItem(delegate{try{
                 int n=0;
@@ -664,6 +751,8 @@ sealed class MainForm : Form
     protected override void Dispose(bool disposing){if(disposing){if(current!=null)current.Dispose();foreach(Bitmap b in galleryBitmaps)b.Dispose();galleryBitmaps.Clear();galleryItems.Clear();}base.Dispose(disposing);}    
 }
 }
+
+
 
 
 

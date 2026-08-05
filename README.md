@@ -127,6 +127,19 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。若下游工具显示发黑或颜色异常，通常是字节序不一致：可尝试把 `Endian` 切换为 `Big Endian` 后再导出。
+
+## 导出通路锁定策略
+
+`Export` 下拉框现在是动态白名单，不再固定显示所有格式。打开文件后，只会显示当前源格式允许导出的目标格式；多图模式会取所有图片共同允许的格式。
+
+已锁定 / 不可选的通路：
+
+- 任意格式导出为 `RAW*`：锁定。因为当前画面已经是解码后的 RGB 结果，无法恢复真实 sensor Bayer RAW，只能合成 RAW，容易误用。
+- `RGB24 / BGR24 / RGBA32 / BGRA32` 导出为 `P010`：锁定。8-bit RGB 不能生成真实 10-bit YUV 信息。
+- `NV21 / NV12 / I420 / YV12 / YUV420P` 导出为 `P010`：锁定。8-bit YUV420 不能生成真实 10-bit P010 信息。
+- 奇数宽高导出为 `NV21 / NV12 / I420 / YV12 / YUV420P / P010`：锁定。YUV420 / P010 要求偶数宽高。
+
+状态栏会显示类似 `RAW output is locked...` 的提示，说明被隐藏格式的原因。
 ## 界面说明
 
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
@@ -153,6 +166,7 @@ C:\Windows\Microsoft.NET\Framework64\v4.0.30319\csc.exe /nologo /target:winexe /
 ## License
 
 见仓库中的 `LICENSE`。
+
 
 
 
