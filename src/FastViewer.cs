@@ -153,7 +153,7 @@ sealed class MainForm : Form
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         Controls.Add(root);
 
-        var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=0,Padding=new Padding(24,22,24,22)};
+        var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=0,Padding=new Padding(22,18,22,18)};
         root.Controls.Add(leftShell,0,0);
 
         var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=31,BackColor=cardBg};
@@ -184,7 +184,7 @@ sealed class MainForm : Form
         exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,27);
         AddButton(left,"Refresh",delegate{RefreshPreview();},0,28,1); AddButton(left,"Export Image",delegate{ExportImage();},1,28,1);
 
-        var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.4F)};
+        var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .nv21  .rgb48\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.2F)};
         left.Controls.Add(hint,0,30); left.SetColumnSpan(hint,2);
 
         var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(28,22,28,22)};
@@ -206,14 +206,14 @@ sealed class MainForm : Form
     }
 
     void AddTitle(TableLayoutPanel t,string title,string sub,int r){var box=new Panel{Dock=DockStyle.Top,Height=76,BackColor=Color.White};var a=new Label{Text=title,Dock=DockStyle.Top,Height=36,Font=new Font("Segoe UI Semibold",18F,FontStyle.Bold),ForeColor=Color.Black};var b=new Label{Text=sub,Dock=DockStyle.Top,Height=26,ForeColor=Color.FromArgb(102,102,102),Font=new Font("Consolas",8.8F)};box.Controls.Add(b);box.Controls.Add(a);t.Controls.Add(box,0,r);t.SetColumnSpan(box,2);}    
-    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=34,Padding=new Padding(0,16,0,0),Font=new Font("Consolas",8.4F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
+    void AddSection(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,Height=26,Padding=new Padding(0,9,0,0),Font=new Font("Consolas",8.2F,FontStyle.Bold),ForeColor=Color.FromArgb(102,102,102),BackColor=Color.White};t.Controls.Add(l,0,r);t.SetColumnSpan(l,2);}    
     void AddWide(TableLayoutPanel t,string s,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.BottomLeft,ForeColor=Color.FromArgb(60,60,67),BackColor=Color.White}; t.Controls.Add(l,0,r); t.SetColumnSpan(l,2);}    
-    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,5,12,5),Font=new Font("Segoe UI",9F)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,5,12,5),Font=new Font("Segoe UI",9F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
-    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Height=34,Margin=new Padding(c==0?0:6,5,c==0?6:0,5),Font=new Font("Segoe UI Semibold",8.8F)}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
-    Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=8,Margin=new Padding(0,4,0,4),Padding=new Padding(10,6,9,5)}; child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
-    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",9.0F);} 
-    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",9.0F);} 
+    void AddRow(TableLayoutPanel t,string s,TextBox b,int r,string v){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,2,12,2),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); b.Text=v; StyleTextBox(b); t.Controls.Add(FieldHost(b),1,r);}    
+    void AddCombo(TableLayoutPanel t,string s,ComboBox b,int r){var l=new Label{Text=s,Dock=DockStyle.Fill,TextAlign=ContentAlignment.MiddleLeft,ForeColor=Color.FromArgb(23,23,23),BackColor=Color.White,Margin=new Padding(0,2,12,2),Font=new Font("Segoe UI",8.8F)}; t.Controls.Add(l,0,r); StyleCombo(b); t.Controls.Add(FieldHost(b),1,r);}    
+    void AddButton(TableLayoutPanel t,string s,EventHandler h,int c,int r,int span){var b=new RoundedButton{Text=s,Dock=DockStyle.Fill,Height=30,Margin=new Padding(c==0?0:6,3,c==0?6:0,3),Font=new Font("Segoe UI Semibold",8.6F)}; StyleButton(b,s=="Open"); b.Click+=h; t.Controls.Add(b,c,r); if(span>1)t.SetColumnSpan(b,span);}    
+    Control FieldHost(Control child){var host=new RoundedPanel{Dock=DockStyle.Fill,FillColor=Color.White,BackColor=Color.White,BorderColor=Color.FromArgb(234,234,234),Radius=8,Margin=new Padding(0,2,0,2),Padding=new Padding(8,3,8,2)}; child.Dock=DockStyle.Fill; child.Margin=new Padding(0); host.Controls.Add(child); return host;}
+    void StyleTextBox(TextBox b){b.BorderStyle=BorderStyle.None;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
+    void StyleCombo(ComboBox b){b.FlatStyle=FlatStyle.Flat;b.BackColor=Color.White;b.ForeColor=Color.FromArgb(23,23,23);b.Font=new Font("Segoe UI",8.8F);} 
     void StyleButton(Button b,bool primary){var rb=b as RoundedButton;if(rb!=null){rb.Radius=8;rb.BorderColor=primary?Color.Black:Color.FromArgb(234,234,234);rb.FillNormal=primary?Color.Black:Color.White;rb.FillHover=primary?Color.FromArgb(23,23,23):Color.FromArgb(250,250,250);rb.TextColor=primary?Color.White:Color.Black;}else{b.FlatStyle=FlatStyle.Flat;b.FlatAppearance.BorderSize=primary?0:1;b.FlatAppearance.BorderColor=Color.FromArgb(218,218,224);b.BackColor=primary?Color.Black:Color.White;b.ForeColor=primary?Color.White:Color.Black;}}
 
     void EnableDrop(Control c)
