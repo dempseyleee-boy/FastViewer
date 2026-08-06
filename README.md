@@ -1,6 +1,6 @@
 ﻿# FastViewer
 
-FastViewer 是一个 Windows 桌面查看器，用来直接打开手机 Camera 导出的 RAW / YUV / RGB 原始帧文件。它可以从文件名里自动解析常见的宽高和格式后缀，并支持单图查看、多图同时对比。
+FastViewer 是一个 Windows 桌面查看器，用来直接打开手机 Camera 导出的 RAW / YUV / RGB / 灰度原始帧文件。它可以从文件名里自动解析常见的宽高和格式后缀，并支持单图查看、多图同时对比。
 
 当前版本：**FastViewer**
 
@@ -28,7 +28,7 @@ dist/run_fastviewer.bat               便捷启动脚本
 
 ## 支持的文件名规则
 
-文件后缀不区分大小写。宽高会从文件名中自动解析，支持类似这些写法：
+文件后缀不区分大小写。宽高会优先从文件名中自动解析；如果文件名没有宽高，程序会根据文件大小、格式和常见 camera 分辨率尝试自动猜测。支持类似这些写法：
 
 ```text
 3280x2464
@@ -72,6 +72,16 @@ w3280h2464
 - `.bgra` / `.bgra32`
 - `.rgb48`
 - `.bgr48`
+
+### 灰度 / 单通道
+
+支持 8-bit 和 16-bit 单通道 dump：
+
+- `.gray` / `.grey` / `.y` / `.mono`：按 `GRAY8` 处理
+- `.gray8` / `.y8` / `.mono8`
+- `.gray16` / `.y16` / `.mono16`
+
+`GRAY16 / Y16 / MONO16` 会尊重左侧 `Endian` 选项；预览时会显示为 `R = G = B = Gray`。
 
 ### YUV
 
@@ -124,7 +134,7 @@ w3280h2464
 
 RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 `.RAW14_GRBG_16B`。注意：RAW 导出是把当前解码后的 RGB 画面重新编码成 Bayer dump，适合格式互转和喂给下游工具链；它不能恢复原 sensor RAW 里已经丢失的信息。
 
-YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。
+灰度格式导出会生成单通道 dump；`GRAY8 / Y8 / MONO8` 为 1 byte per pixel，`GRAY16 / Y16 / MONO16` 为 2 bytes per pixel，并尊重 `Endian`。YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。若下游工具显示发黑或颜色异常，通常是字节序不一致：可尝试把 `Endian` 切换为 `Big Endian` 后再导出。
 
@@ -147,7 +157,7 @@ YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的�
 
 - 界面采用 Next.js / Vercel 风格的黑白极简设计：左侧参数区像配置 sidebar，画布像 demo card，按钮、输入框和下拉字段使用克制的细边框、小圆角和高对比层级。
 - 支持把文件拖到窗口、画布或左侧路径框打开；拖入多张文件会进入多图模式。
-- 每次打开 / 拖入新文件时，`Width`、`Height`、`Format`、`Stride`、`Endian`、`Bits`、`Bayer` 会按文件名重新检测刷新，避免上一张图的参数残留。
+- 每次打开 / 拖入新文件时，`Width`、`Height`、`Format`、`Stride`、`Endian`、`Bits`、`Bayer` 会按文件名重新检测刷新；文件名没有宽高时，会根据文件大小和格式尝试猜测，避免上一张图的参数残留。
 - 单图模式会渲染完整原图，并默认适配到窗口内完整显示。
 - 多图模式会把一次选择的多张文件显示成卡片墙，方便对比 RAW / RGB / YUV 输出。
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
@@ -181,11 +191,12 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 当前 self-test 覆盖：
 
 - 文件名宽高解析，例如 `3280x2464`、`w1920h1080`。
-- 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`RGB48`、`NV21`。
+- 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`GRAY8 / GRAY16`、`RGB48`、`NV21`。
 - `BT.601 / BT.709 / BT.2020` 与 `Limited / Full` 的 YUV ↔ RGB round-trip。
 - `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。
 - `RAW14_PACKED` bitstream 取样。
 - `RGB48 / BGR48` 的 little / big endian 解码。
+- 灰度格式读取，以及无宽高 `.gray` 文件的尺寸猜测。
 
 报告会写到 `dist/FastViewer.selftest.txt`；退出码为 `0` 表示通过，非 `0` 表示有回归。
 
@@ -210,4 +221,3 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tests\run-local-sample-test.
 ## License
 
 本项目使用 MIT License，见仓库中的 `LICENSE`。
-

@@ -328,6 +328,7 @@ Export = RGB48
 - 为提升严谨性，新增 YUV Matrix / Range 显式设置，并在导出时写出 `.json` sidecar 元数据。
 - 新增内置 `--self-test` 和 `tests/run-self-test.ps1`，覆盖文件名宽高、stride/size、YUV matrix/range、RAW14 16B/packed、RGB48/BGR48 endian 等核心回归检查。
 - 新增 `tests/run-local-sample-test.ps1`，默认读取 `C:\Users\ljr23225\Desktop\output` 下的真实 camera dump，校验 SHA256、文件大小、格式推断、expected bytes 和少量解码采样。
+- 新增 `GRAY8 / Y8 / MONO8 / GRAY16 / Y16 / MONO16` 灰度单通道格式支持；`.gray/.grey/.y/.mono` 作为 `GRAY8` 别名；文件名没有宽高时，会根据文件大小、格式和常见 camera 分辨率自动猜测。
 - 多图导入时参数可能污染，已改为每张图独立检测。
 - RGB48 / BGR48 字节序固定小端导致下游显示异常，已改为尊重 `Endian`。
 
@@ -411,4 +412,3 @@ face_1920x1280.NV21
 - 增加 RGB48 端序自动探测或预览对比。
 - 增加更多 YUV packed / semi-planar 变体。
 - 将核心转换逻辑拆成独立库，UI 与格式编解码分离。
-
