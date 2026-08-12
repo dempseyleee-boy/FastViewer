@@ -62,7 +62,11 @@ w3280h2464
 
 ```text
 20251217101_P12U_F_Face_20251217_211423_3280x2464_p_3280x2464_process_1.RAW14_GRBG_16B
+face_3280x2464.RAW14_GRBG_16B_MSB
+face_3280x2464.RAW14_GRBG_16B_LSB
 ```
+
+`_MSB` / `_LSB` / `_MSB_ALIGNED` / `_LSB_ALIGNED` 可以放在后缀末尾，用来自动选择 `Bits` 下拉框里的 `MSB aligned` 或 `LSB aligned`；没有写时默认 `LSB aligned`。
 
 ### RGB
 
@@ -191,6 +195,7 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 当前 self-test 覆盖：
 
 - 文件名宽高解析，例如 `3280x2464`、`w1920h1080`。
+- `_MSB / _LSB / _MSB_ALIGNED / _LSB_ALIGNED` 后缀自动选择 bit alignment。
 - 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`GRAY8 / GRAY16`、`RGB48`、`NV21`。
 - `BT.601 / BT.709 / BT.2020` 与 `Limited / Full` 的 YUV ↔ RGB round-trip。
 - `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。

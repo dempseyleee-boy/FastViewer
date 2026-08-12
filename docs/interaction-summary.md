@@ -178,7 +178,7 @@ xxx_3280x2464.RAW10_RGGB_PACKED
 - 单图导入会刷新左侧选项。
 - 多图导入会为每张图独立检测参数，不再反复污染左侧 UI。
 
-需要注意：如果文件名没有明确格式后缀，例如 `.bin`、`.raw`、`.yuv`，程序会使用安全默认值 `RAW14_16B / GRBG / Little Endian / LSB aligned`。最稳的规避方式是始终使用完整格式后缀。
+需要注意：如果文件名没有明确格式后缀，例如 `.bin`、`.raw`、`.yuv`，程序会使用安全默认值 `RAW14_16B / GRBG / Little Endian / LSB aligned`。如果文件名包含 `_MSB`、`_LSB`、`_MSB_ALIGNED`、`_LSB_ALIGNED` 等 token，会自动刷新 `Bits` 下拉框里的对齐方式。最稳的规避方式是始终使用完整格式后缀。
 
 ## Endian 与 Bits 对齐说明
 
@@ -329,6 +329,7 @@ Export = RGB48
 - 新增内置 `--self-test` 和 `tests/run-self-test.ps1`，覆盖文件名宽高、stride/size、YUV matrix/range、RAW14 16B/packed、RGB48/BGR48 endian 等核心回归检查。
 - 新增 `tests/run-local-sample-test.ps1`，默认读取 `C:\Users\ljr23225\Desktop\output` 下的真实 camera dump，校验 SHA256、文件大小、格式推断、expected bytes 和少量解码采样。
 - 新增 `GRAY8 / Y8 / MONO8 / GRAY16 / Y16 / MONO16` 灰度单通道格式支持；`.gray/.grey/.y/.mono` 作为 `GRAY8` 别名；文件名没有宽高时，会根据文件大小、格式和常见 camera 分辨率自动猜测。
+- 新增根据文件名后缀自动选择 LSB/MSB aligned：支持 `_MSB`、`_LSB`、`_MSB_ALIGNED`、`_LSB_ALIGNED`，例如 `.RAW14_GRBG_16B_MSB`。
 - 多图导入时参数可能污染，已改为每张图独立检测。
 - RGB48 / BGR48 字节序固定小端导致下游显示异常，已改为尊重 `Endian`。
 

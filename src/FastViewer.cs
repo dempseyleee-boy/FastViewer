@@ -294,7 +294,7 @@ sealed class MainForm : Form
     {
         var q=new Params();
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim());
-        q.Little=true; q.Lsb=true; q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
+        q.Little=true; q.Lsb=DetectLsbAlignedFromName(path); q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Format=DetectFormatFromExtension(path,out q.Pattern);
         q.Packed=q.Format.EndsWith("PACKED"); q.Bits=BitsForFormat(q.Format);
         int ww,hh;
@@ -308,14 +308,22 @@ sealed class MainForm : Form
     string DetectFormatFromExtension(string path,out int pattern)
     {
         pattern=0; string ext=Path.GetExtension(path).ToLowerInvariant();
-        var m=Regex.Match(ext,@"^\.raw(8|10|12|14|16)_(rggb|grbg|gbrg|bggr)_(packed|16b|8b)$",RegexOptions.IgnoreCase);
+        var m=Regex.Match(ext,@"^\.raw(8|10|12|14|16)_(rggb|grbg|gbrg|bggr)_(packed|16b|8b)(?:_(?:lsb|msb)(?:_?aligned|_?align)?)?$",RegexOptions.IgnoreCase);
         if(m.Success){pattern=PatternIndex(m.Groups[2].Value);return "RAW"+m.Groups[1].Value+"_"+m.Groups[3].Value.ToUpperInvariant();}
         string f=ext.Length>1?ext.Substring(1).ToUpperInvariant():"";
+        f=Regex.Replace(f,@"_(?:LSB|MSB)(?:_?ALIGNED|_?ALIGN)?$","",RegexOptions.IgnoreCase);
         if(f=="RGB")f="RGB24"; if(f=="BGR")f="BGR24"; if(f=="RGBA")f="RGBA32"; if(f=="BGRA")f="BGRA32";
         if(f=="GRAY"||f=="GREY"||f=="Y"||f=="MONO")f="GRAY8";
         if(f=="GREY8")f="GRAY8"; if(f=="GREY16")f="GRAY16";
         bool known=false; for(int i=0;i<formats.Length;i++)if(String.Equals(formats[i],f,StringComparison.OrdinalIgnoreCase)){known=true;break;}
         return known?f:"RAW14_16B";
+    }
+    static bool DetectLsbAlignedFromName(string path)
+    {
+        string n=Path.GetFileNameWithoutExtension(path).ToUpperInvariant()+"_"+Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+        if(Regex.IsMatch(n,@"(^|[^A-Z0-9])MSB(?:[_\-\s]?ALIGNED|[_\-\s]?ALIGN)?([^A-Z0-9]|$)",RegexOptions.IgnoreCase))return false;
+        if(Regex.IsMatch(n,@"(^|[^A-Z0-9])LSB(?:[_\-\s]?ALIGNED|[_\-\s]?ALIGN)?([^A-Z0-9]|$)",RegexOptions.IgnoreCase))return true;
+        return true;
     }
     void ApplyDetectedParams(Params q)
     {
@@ -1053,6 +1061,7 @@ sealed class MainForm : Form
             report.AppendLine();
 
             Test("filename dimensions", TestFilenameDimensions);
+            Test("alignment suffix detection", TestAlignmentSuffixDetection);
             Test("default stride and expected bytes", TestStrideAndExpectedBytes);
             Test("YUV matrix/range round-trip", TestYuvRoundTrip);
             Test("RAW14 16B alignment", TestRaw14Alignment);
@@ -1097,6 +1106,15 @@ sealed class MainForm : Form
         {
             for(int i=1;i<args.Length-1;i++)if(String.Equals(args[i],"--sample-dir",StringComparison.OrdinalIgnoreCase))return args[i+1];
             return null;
+        }
+        static void TestAlignmentSuffixDetection()
+        {
+            EqBool("plain default lsb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B"),true);
+            EqBool("raw suffix msb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_MSB"),false);
+            EqBool("raw suffix lsb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_LSB"),true);
+            EqBool("gray suffix msb aligned",DetectLsbAlignedFromName("frame_640x480.GRAY16_MSB_ALIGNED"),false);
+            int pattern; string fmt; using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RAW14_GRBG_16B_MSB",out pattern);}
+            if(fmt!="RAW14_16B"||pattern!=0)throw new Exception("RAW MSB suffix format parse failed: "+fmt+" pattern "+pattern);
         }
         static void TestFilenameDimensions()
         {
