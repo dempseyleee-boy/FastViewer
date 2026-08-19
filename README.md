@@ -96,16 +96,6 @@ face_3280x2464.RAW14_GRBG_16B_LSB
 - `.yuv420p`
 - `.p010`
 
-### 白平衡 / AWB
-
-左侧 `WB` 用来控制预览和导出时的白平衡：
-
-- `Auto`：默认选项。程序会对当前整张图做灰世界估计；RAW 彩色预览以 Green 通道为基准，RGB/YUV 以 RGB 平均值为基准，并对 gain 做限幅，避免局部颜色导致过度修正。
-- `Off`：不做白平衡，适合检查原始 dump、bit alignment、endian、YUV matrix/range 是否正确。
-- `Manual`：使用 `RGB Gain` 输入框里的 `R,G,B` 增益，例如 `1.8,1,1.4`。支持逗号、空格、分号或 `/` 分隔。
-
-`Bayer gray` / `Bayer site RGB` / 灰度图不会应用 AWB；状态栏和导出 sidecar 会记录实际使用的 `wb_mode` 和 `wb_*_gain`。如果你觉得手机 camera 的 AWB 不正常，建议先用 `Off` 看原始颜色，再用 `Manual` 输入算法侧或 metadata 里的 gain 做对比。
-
 
 ## 图标
 
@@ -152,7 +142,7 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。若下游工具显示发黑或颜色异常，通常是字节序不一致：可尝试把 `Endian` 切换为 `Big Endian` 后再导出。
 
-每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、WB gain、YUV matrix/range 等，方便后续复现和排查。
+每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，方便后续复现和排查。
 
 ## 导出通路锁定策略
 
@@ -175,7 +165,6 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 - 单图模式会渲染完整原图，并默认适配到窗口内完整显示。
 - 多图模式会把一次选择的多张文件显示成卡片墙，方便对比 RAW / RGB / YUV 输出。
 - `Black`、`White`、`Gamma` 用于 RAW tone mapping；填写 `auto` 会自动估计黑白场。
-- `WB` 支持 `Auto / Off / Manual`：`Auto` 做灰世界白平衡，`Off` 保留原始颜色，`Manual` 使用 `RGB Gain`。
 - `Stride` 可留空，程序会按当前格式自动给默认 stride。
 - `Rotate` 支持 `0`、`90`、`180`、`270` 度旋转。
 - `YUV Matrix` / `YUV Range` 用于控制 YUV 与 RGB 转换的色彩矩阵和范围，默认 `BT.601 / Limited`。
@@ -209,7 +198,6 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 - `_MSB / _LSB / _MSB_ALIGNED / _LSB_ALIGNED` 后缀自动选择 bit alignment。
 - 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`GRAY8 / GRAY16`、`RGB48`、`NV21`。
 - `BT.601 / BT.709 / BT.2020` 与 `Limited / Full` 的 YUV ↔ RGB round-trip。
-- 白平衡 gain 计算、限幅，以及 RAW/RGB/YUV 应用逻辑。
 - `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。
 - `RAW14_PACKED` bitstream 取样。
 - `RGB48 / BGR48` 的 little / big endian 解码。

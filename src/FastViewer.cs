@@ -9,7 +9,6 @@ using System.Text.RegularExpressions;
 using System.Text;
 using System.Security.Cryptography;
 using System.Threading;
-using System.Globalization;
 using System.Windows.Forms;
 
 namespace FastViewer
@@ -32,9 +31,8 @@ static class Program
 
 sealed class Params
 {
-    public int W,H,Stride,Offset,Black,White,Pattern,View,Rotate,Bits,YuvMatrix,WbMode;
+    public int W,H,Stride,Offset,Black,White,Pattern,View,Rotate,Bits,YuvMatrix;
     public bool AutoLevels,Little,Lsb,Packed,YuvFullRange;
-    public double RGain=1.0,GGain=1.0,BGain=1.0;
     public string Format;
 }
 
@@ -126,8 +124,8 @@ sealed class RoundedButton : Button
 sealed class MainForm : Form
 {
     TextBox pathBox=new TextBox(), wBox=new TextBox(), hBox=new TextBox(), strideBox=new TextBox(), offsetBox=new TextBox();
-    TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox(), wbGainBox=new TextBox();
-    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), wbBox=new ComboBox(), yuvMatrixBox=new ComboBox(), yuvRangeBox=new ComboBox(), exportBox=new ComboBox();
+    TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
+    ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), yuvMatrixBox=new ComboBox(), yuvRangeBox=new ComboBox(), exportBox=new ComboBox();
     RoundedPanel imagePanel=new RoundedPanel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
     byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
@@ -166,7 +164,7 @@ sealed class MainForm : Form
         var leftShell=new RoundedPanel{Dock=DockStyle.Fill,AutoScroll=true,FillColor=cardBg,BackColor=cardBg,BorderColor=line,Radius=0,Padding=new Padding(22,18,22,18)};
         root.Controls.Add(leftShell,0,0);
 
-        var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=35,BackColor=cardBg};
+        var left=new TableLayoutPanel{Dock=DockStyle.Top,AutoSize=true,ColumnCount=2,RowCount=33,BackColor=cardBg};
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute,104));
         left.ColumnStyles.Add(new ColumnStyle(SizeType.Percent,100));
         leftShell.Controls.Add(left);
@@ -180,27 +178,25 @@ sealed class MainForm : Form
         AddRow(left,"Width",wBox,7,"4096"); AddRow(left,"Height",hBox,8,"3072"); AddRow(left,"Stride",strideBox,9,""); AddRow(left,"Offset",offsetBox,10,"0");
         AddSection(left,"TONE",12);
         AddRow(left,"Black",blackBox,13,"auto"); AddRow(left,"White",whiteBox,14,"auto"); AddRow(left,"Gamma",gammaBox,15,"2.2");
-        wbBox.DropDownStyle=ComboBoxStyle.DropDownList; wbBox.Items.AddRange(new object[]{"Auto","Off","Manual"}); wbBox.SelectedIndex=0; AddCombo(left,"WB",wbBox,16);
-        AddRow(left,"RGB Gain",wbGainBox,17,"1,1,1");
 
-        AddSection(left,"FORMAT",19);
-        fmtBox.DropDownStyle=ComboBoxStyle.DropDownList; fmtBox.Items.AddRange(formats); fmtBox.SelectedIndex=5; AddCombo(left,"Format",fmtBox,20);
-        endianBox.DropDownStyle=ComboBoxStyle.DropDownList; endianBox.Items.AddRange(new object[]{"Little Endian","Big Endian"}); endianBox.SelectedIndex=0; AddCombo(left,"Endian",endianBox,21);
-        alignBox.DropDownStyle=ComboBoxStyle.DropDownList; alignBox.Items.AddRange(new object[]{"LSB aligned","MSB aligned"}); alignBox.SelectedIndex=0; AddCombo(left,"Bits",alignBox,22);
-        patternBox.DropDownStyle=ComboBoxStyle.DropDownList; patternBox.Items.AddRange(new object[]{"GRBG","RGGB","BGGR","GBRG"}); patternBox.SelectedIndex=0; AddCombo(left,"Bayer",patternBox,23);
-        viewBox.DropDownStyle=ComboBoxStyle.DropDownList; viewBox.Items.AddRange(new object[]{"Color","Bayer gray","Bayer site RGB"}); viewBox.SelectedIndex=0; AddCombo(left,"View",viewBox,24);
-        rotBox.DropDownStyle=ComboBoxStyle.DropDownList; rotBox.Items.AddRange(new object[]{"0","90","180","270"}); rotBox.SelectedIndex=0; AddCombo(left,"Rotate",rotBox,25);
-        yuvMatrixBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvMatrixBox.Items.AddRange(new object[]{"BT.601","BT.709","BT.2020"}); yuvMatrixBox.SelectedIndex=0; AddCombo(left,"YUV Matrix",yuvMatrixBox,26);
-        yuvRangeBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvRangeBox.Items.AddRange(new object[]{"Limited","Full"}); yuvRangeBox.SelectedIndex=0; AddCombo(left,"YUV Range",yuvRangeBox,27);
+        AddSection(left,"FORMAT",17);
+        fmtBox.DropDownStyle=ComboBoxStyle.DropDownList; fmtBox.Items.AddRange(formats); fmtBox.SelectedIndex=5; AddCombo(left,"Format",fmtBox,18);
+        endianBox.DropDownStyle=ComboBoxStyle.DropDownList; endianBox.Items.AddRange(new object[]{"Little Endian","Big Endian"}); endianBox.SelectedIndex=0; AddCombo(left,"Endian",endianBox,19);
+        alignBox.DropDownStyle=ComboBoxStyle.DropDownList; alignBox.Items.AddRange(new object[]{"LSB aligned","MSB aligned"}); alignBox.SelectedIndex=0; AddCombo(left,"Bits",alignBox,20);
+        patternBox.DropDownStyle=ComboBoxStyle.DropDownList; patternBox.Items.AddRange(new object[]{"GRBG","RGGB","BGGR","GBRG"}); patternBox.SelectedIndex=0; AddCombo(left,"Bayer",patternBox,21);
+        viewBox.DropDownStyle=ComboBoxStyle.DropDownList; viewBox.Items.AddRange(new object[]{"Color","Bayer gray","Bayer site RGB"}); viewBox.SelectedIndex=0; AddCombo(left,"View",viewBox,22);
+        rotBox.DropDownStyle=ComboBoxStyle.DropDownList; rotBox.Items.AddRange(new object[]{"0","90","180","270"}); rotBox.SelectedIndex=0; AddCombo(left,"Rotate",rotBox,23);
+        yuvMatrixBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvMatrixBox.Items.AddRange(new object[]{"BT.601","BT.709","BT.2020"}); yuvMatrixBox.SelectedIndex=0; AddCombo(left,"YUV Matrix",yuvMatrixBox,24);
+        yuvRangeBox.DropDownStyle=ComboBoxStyle.DropDownList; yuvRangeBox.Items.AddRange(new object[]{"Limited","Full"}); yuvRangeBox.SelectedIndex=0; AddCombo(left,"YUV Range",yuvRangeBox,25);
 
-        AddSection(left,"OUTPUT",29);
-        AddButton(left,"Fit Window",delegate{FitWindow();},0,30,2);
-        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,31);
-        AddButton(left,"Refresh",delegate{RefreshPreview();},0,32,1); AddButton(left,"Export Image",delegate{ExportImage();},1,32,1);
+        AddSection(left,"OUTPUT",27);
+        AddButton(left,"Fit Window",delegate{FitWindow();},0,28,2);
+        exportBox.DropDownStyle=ComboBoxStyle.DropDownList; exportBox.Items.AddRange(imageExports); exportBox.SelectedIndex=0; AddCombo(left,"Export",exportBox,29);
+        AddButton(left,"Refresh",delegate{RefreshPreview();},0,30,1); AddButton(left,"Export Image",delegate{ExportImage();},1,30,1);
 
         var hint=new Label{Text="Drop files anywhere\r\n.raw14_grbg_16b  .gray  .nv21\r\nCtrl + wheel to zoom",Dock=DockStyle.Top,AutoSize=true,Padding=new Padding(0,18,0,0),ForeColor=sub,BackColor=cardBg,Font=new Font("Consolas",8.2F)};
-        left.Controls.Add(hint,0,34); left.SetColumnSpan(hint,2);
-        FitLeftRowsToContent(left,new int[]{0,2,3,4,6,7,8,9,10,12,13,14,15,16,17,19,20,21,22,23,24,25,26,27,29,30,31,32,34});
+        left.Controls.Add(hint,0,32); left.SetColumnSpan(hint,2);
+        FitLeftRowsToContent(left,new int[]{0,2,3,4,6,7,8,9,10,12,13,14,15,17,18,19,20,21,22,23,24,25,27,28,29,30,32});
 
         var right=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=3,BackColor=appBg,Padding=new Padding(28,22,28,22)};
         right.RowStyles.Add(new RowStyle(SizeType.Absolute,70));
@@ -298,7 +294,7 @@ sealed class MainForm : Form
     {
         var q=new Params();
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim());
-        q.Little=true; q.Lsb=DetectLsbAlignedFromName(path); q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange(); q.WbMode=WbModeIndex(); ParseWbGains(out q.RGain,out q.GGain,out q.BGain);
+        q.Little=true; q.Lsb=DetectLsbAlignedFromName(path); q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Format=DetectFormatFromExtension(path,out q.Pattern);
         q.Packed=q.Format.EndsWith("PACKED"); q.Bits=BitsForFormat(q.Format);
         int ww,hh;
@@ -402,25 +398,6 @@ sealed class MainForm : Form
     string Format(){return fmtBox.SelectedItem==null?"RAW14_16B":fmtBox.SelectedItem.ToString().ToUpperInvariant();}
     int YuvMatrixIndex(){return yuvMatrixBox.SelectedIndex<0?0:yuvMatrixBox.SelectedIndex;}
     bool YuvFullRange(){return yuvRangeBox.SelectedIndex==1;}
-    int WbModeIndex(){return wbBox.SelectedIndex<0?0:wbBox.SelectedIndex;}
-    static string WbModeName(int index){return index==1?"Off":(index==2?"Manual":"Auto");}
-    static double ClampGain(double v){if(Double.IsNaN(v)||Double.IsInfinity(v)||v<=0)return 1.0;if(v<0.25)return 0.25;if(v>4.0)return 4.0;return v;}
-    static string FormatGain(double v){return ClampGain(v).ToString("0.###",CultureInfo.InvariantCulture);}
-    void ParseWbGains(out double r,out double g,out double b)
-    {
-        r=g=b=1.0;
-        string s=wbGainBox.Text.Trim();
-        if(String.IsNullOrWhiteSpace(s))return;
-        string[] parts=Regex.Split(s,@"[,;\s/]+");
-        double[] vals=new double[3]; int n=0;
-        for(int i=0;i<parts.Length&&n<3;i++)
-        {
-            if(parts[i].Length==0)continue;
-            double v;
-            if(Double.TryParse(parts[i],NumberStyles.Float,CultureInfo.InvariantCulture,out v)||Double.TryParse(parts[i],out v))vals[n++]=ClampGain(v);
-        }
-        if(n>0)r=vals[0]; if(n>1)g=vals[1]; if(n>2)b=vals[2];
-    }
     static int DefaultStride(int w,string f){if(IsGray8FormatName(f))return w;if(IsGray16FormatName(f))return w*2;if(f=="RAW8_8B")return w;if(f=="RAW10_PACKED")return ((w+3)/4)*5;if(f=="RAW12_PACKED")return ((w+1)/2)*3;if(f=="RAW14_PACKED")return (w*14+7)/8;if(f=="RGB24"||f=="BGR24")return w*3;if(f=="RGBA32"||f=="BGRA32")return w*4;if(f=="RGB48"||f=="BGR48")return w*6;if(f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P")return w;return w*2;}
 
     Params ReadParams()
@@ -428,7 +405,7 @@ sealed class MainForm : Form
         var q=new Params(); q.W=Int32.Parse(wBox.Text.Trim()); q.H=Int32.Parse(hBox.Text.Trim()); q.Format=Format();
         string st=strideBox.Text.Trim(); q.Stride=String.IsNullOrWhiteSpace(st)?DefaultStride(q.W,q.Format):Int32.Parse(st);
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim()); q.Little=endianBox.SelectedIndex==0; q.Lsb=alignBox.SelectedIndex==0;
-        q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange(); q.WbMode=WbModeIndex(); ParseWbGains(out q.RGain,out q.GGain,out q.BGain);
+        q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Packed=q.Format.EndsWith("PACKED"); q.Bits=8; var m=Regex.Match(q.Format,@"RAW(\d+)_"); if(m.Success)q.Bits=Int32.Parse(m.Groups[1].Value);
         string b=blackBox.Text.Trim().ToLowerInvariant(), w=whiteBox.Text.Trim().ToLowerInvariant(); q.AutoLevels=b==""||w==""||b=="auto"||w=="auto"; q.Black=q.AutoLevels?0:Int32.Parse(b); q.White=q.AutoLevels?MaxRaw(q.Bits):Int32.Parse(w); double gv; if(!Double.TryParse(gammaBox.Text,out gv))gv=2.2; gammaValue=gv;
         if(q.W<=0||q.H<=0)throw new Exception("Width/height must be positive."); if(q.Stride<=0)throw new Exception("Stride must be positive or empty."); if(q.Offset<0)throw new Exception("Offset must be >=0."); return q;
@@ -530,7 +507,7 @@ sealed class MainForm : Form
         var inner=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Color.White};
         inner.RowStyles.Add(new RowStyle(SizeType.Absolute,50));
         inner.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White+"  "+WbStatus(job.P),Dock=DockStyle.Fill,ForeColor=Color.Black,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.Black,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
         var pb=new PictureBox{Dock=DockStyle.Fill,Image=job.Bitmap,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.Black};
         inner.Controls.Add(cap,0,0); inner.Controls.Add(pb,0,1); card.Controls.Add(inner); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
     }
@@ -649,71 +626,12 @@ sealed class MainForm : Form
     }
     byte Stretch(int v){if(stretchLut!=null){if(v<0)v=0;else if(v>=stretchLut.Length)v=stretchLut.Length-1;return stretchLut[v];}return Clamp(v);}
 
-    static void WbGainsFromAverages(double ravg,double gavg,double bavg,bool greenRef,out double rg,out double gg,out double bg)
-    {
-        rg=gg=bg=1.0;
-        if(ravg<=0||gavg<=0||bavg<=0)return;
-        double target=greenRef?gavg:(ravg+gavg+bavg)/3.0;
-        if(target<=0)return;
-        rg=ClampGain(target/ravg);
-        gg=greenRef?1.0:ClampGain(target/gavg);
-        bg=ClampGain(target/bavg);
-    }
-    static int ApplyGainInt(int v,double gain,int max){int o=(int)(v*ClampGain(gain)+0.5); if(o<0)return 0; if(o>max)return max; return o;}
-    static byte ApplyGainByte(byte v,double gain){return Clamp((int)(v*ClampGain(gain)+0.5));}
-    static void ApplyWbBytesCore(ref byte r,ref byte g,ref byte b,double rg,double gg,double bg){r=ApplyGainByte(r,rg); g=ApplyGainByte(g,gg); b=ApplyGainByte(b,bg);}
-    static void ApplyWbRawCore(ref int r,ref int g,ref int b,int max,double rg,double gg,double bg){r=ApplyGainInt(r,rg,max); g=ApplyGainInt(g,gg,max); b=ApplyGainInt(b,bg,max);}
-    void ApplyWbBytes(ref byte r,ref byte g,ref byte b){if(p==null||p.WbMode==1)return; ApplyWbBytesCore(ref r,ref g,ref b,p.RGain,p.GGain,p.BGain);}
-    void ApplyWbRaw(ref int r,ref int g,ref int b){if(p==null||p.WbMode==1)return; ApplyWbRawCore(ref r,ref g,ref b,MaxRaw(p.Bits),p.RGain,p.GGain,p.BGain);}
-    void PrepareWhiteBalanceGains()
-    {
-        if(p==null)return;
-        if(p.WbMode==1||IsGray()||(IsRaw()&&p.View!=0)){p.RGain=p.GGain=p.BGain=1.0;return;}
-        if(p.WbMode==2){p.RGain=ClampGain(p.RGain);p.GGain=ClampGain(p.GGain);p.BGain=ClampGain(p.BGain);return;}
-        double rg,gg,bg; EstimateAutoWhiteBalance(out rg,out gg,out bg); p.RGain=rg; p.GGain=gg; p.BGain=bg;
-    }
-    void EstimateAutoWhiteBalance(out double rg,out double gg,out double bg)
-    {
-        rg=gg=bg=1.0;
-        if(data==null||p==null||p.W<=0||p.H<=0)return;
-        double rs=0,gs=0,bs=0; int rc=0,gc=0,bc=0;
-        int stepX=Math.Max(1,p.W/192), stepY=Math.Max(1,p.H/144);
-        if(IsRaw())
-        {
-            int span=Math.Max(1,autoWhite-autoBlack);
-            int dark=autoBlack+Math.Max(1,span/128), sat=autoBlack+(span*250)/256;
-            for(int y=0;y<p.H;y+=stepY)for(int x=0;x<p.W;x+=stepX)
-            {
-                int v=RawAt(x,y); if(v<=dark||v>=sat)continue;
-                char c=BayerSite(x,y);
-                if(c=='R'){rs+=v;rc++;} else if(c=='G'){gs+=v;gc++;} else {bs+=v;bc++;}
-            }
-            if(rc<8||gc<8||bc<8)return;
-            WbGainsFromAverages(rs/rc,gs/gc,bs/bc,true,out rg,out gg,out bg);
-            return;
-        }
-        if(!(IsRgb()||IsYuv()))return;
-        for(int y=0;y<p.H;y+=stepY)for(int x=0;x<p.W;x+=stepX)
-        {
-            byte r,g,b; if(IsRgb())RgbAt(x,y,out r,out g,out b); else YuvAt(x,y,out r,out g,out b);
-            int maxc=Math.Max(r,Math.Max(g,b)); if(maxc<8||maxc>250)continue;
-            rs+=r;gs+=g;bs+=b;rc++;
-        }
-        if(rc<16)return;
-        WbGainsFromAverages(rs/rc,gs/rc,bs/rc,false,out rg,out gg,out bg);
-    }
-    string WbStatus(Params q)
-    {
-        if(q==null)return "";
-        return "wb "+WbModeName(q.WbMode)+" "+FormatGain(q.RGain)+","+FormatGain(q.GGain)+","+FormatGain(q.BGain);
-    }
     Bitmap BuildBitmap(bool full)
     {
-        PrepareWhiteBalanceGains();
         int scale=1; int ow=p.W, oh=p.H;
         Bitmap bmp=new Bitmap(ow,oh,PixelFormat.Format24bppRgb); BitmapData bd=bmp.LockBits(new Rectangle(0,0,ow,oh),ImageLockMode.WriteOnly,PixelFormat.Format24bppRgb); int bs=bd.Stride; byte[] pix=new byte[bs*oh];
         for(int oy=0;oy<oh;oy++){int sy=Math.Min(p.H-1,oy*scale), dst=oy*bs; for(int ox=0;ox<ow;ox++){int sx=Math.Min(p.W-1,ox*scale), pos=dst+ox*3; byte r,g,b;
-            if(IsRgb()){RgbAt(sx,sy,out r,out g,out b);ApplyWbBytes(ref r,ref g,ref b);} else if(IsGray())GrayAt(sx,sy,out r,out g,out b); else if(IsYuv()){YuvAt(sx,sy,out r,out g,out b);ApplyWbBytes(ref r,ref g,ref b);} else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);ApplyWbRaw(ref ri,ref gi,ref bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
+            if(IsRgb())RgbAt(sx,sy,out r,out g,out b); else if(IsGray())GrayAt(sx,sy,out r,out g,out b); else if(IsYuv())YuvAt(sx,sy,out r,out g,out b); else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
         Marshal.Copy(pix,0,bd.Scan0,pix.Length); bmp.UnlockBits(bd); RotateBmp(bmp); return bmp;
     }
     void RotateBmp(Bitmap b){if(p.Rotate==90)b.RotateFlip(RotateFlipType.Rotate90FlipNone);else if(p.Rotate==180)b.RotateFlip(RotateFlipType.Rotate180FlipNone);else if(p.Rotate==270)b.RotateFlip(RotateFlipType.Rotate270FlipNone);}
@@ -821,7 +739,7 @@ sealed class MainForm : Form
         return false;
     }
     string WithExportHint(string s){return String.IsNullOrEmpty(exportLockHint)?s:(s+"  |  "+exportLockHint);}
-    void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite+"  "+WbStatus(p));}
+    void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite);}
     string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
     bool IsImageExportKind(string k){return k=="PNG"||k=="BMP"||k=="JPEG"||k=="TIFF";}
     string ExportExt(){return ExportExtFor(ExportKind());}
@@ -1066,10 +984,6 @@ sealed class MainForm : Form
         sb.AppendLine("    \"bayer\": \""+PatternName(src.Pattern)+"\",");
         sb.AppendLine("    \"bits\": "+src.Bits+",");
         sb.AppendLine("    \"rotate\": "+src.Rotate+",");
-        sb.AppendLine("    \"wb_mode\": \""+WbModeName(src.WbMode).ToLowerInvariant()+"\",");
-        sb.AppendLine("    \"wb_r_gain\": "+FormatGain(src.RGain)+",");
-        sb.AppendLine("    \"wb_g_gain\": "+FormatGain(src.GGain)+",");
-        sb.AppendLine("    \"wb_b_gain\": "+FormatGain(src.BGain)+",");
         sb.AppendLine("    \"yuv_matrix\": \""+YuvMatrixName(src.YuvMatrix)+"\",");
         sb.AppendLine("    \"yuv_range\": \""+(src.YuvFullRange?"full":"limited")+"\"");
         sb.AppendLine("  },");
@@ -1150,7 +1064,6 @@ sealed class MainForm : Form
             Test("alignment suffix detection", TestAlignmentSuffixDetection);
             Test("default stride and expected bytes", TestStrideAndExpectedBytes);
             Test("YUV matrix/range round-trip", TestYuvRoundTrip);
-            Test("white balance gains", TestWhiteBalanceGains);
             Test("RAW14 16B alignment", TestRaw14Alignment);
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
@@ -1175,7 +1088,6 @@ sealed class MainForm : Form
         static void EqLong(string label,long actual,long expected){if(actual!=expected)throw new Exception(label+" expected "+expected+", got "+actual);}
         static void EqBool(string label,bool actual,bool expected){if(actual!=expected)throw new Exception(label+" expected "+expected+", got "+actual);}
         static void Near(string label,int actual,int expected,int tol){if(Math.Abs(actual-expected)>tol)throw new Exception(label+" expected near "+expected+", got "+actual);}
-        static void NearD(string label,double actual,double expected,double tol){if(Math.Abs(actual-expected)>tol)throw new Exception(label+" expected near "+expected+", got "+actual.ToString("0.###",CultureInfo.InvariantCulture));}
         static void NearRgb(string label,byte r,byte g,byte b,int er,int eg,int eb,int tol){Near(label+" R",r,er,tol);Near(label+" G",g,eg,tol);Near(label+" B",b,eb,tol);}
 
         static string ReportPathArg(string[] args)
@@ -1248,20 +1160,6 @@ sealed class MainForm : Form
             if(y601==y709)throw new Exception("BT.601 and BT.709 red luma should differ");
         }
 
-        static void TestWhiteBalanceGains()
-        {
-            double rg,gg,bg;
-            WbGainsFromAverages(50,100,200,true,out rg,out gg,out bg);
-            NearD("RAW red gain",rg,2.0,0.001); NearD("RAW green gain",gg,1.0,0.001); NearD("RAW blue gain",bg,0.5,0.001);
-            WbGainsFromAverages(10,100,1000,false,out rg,out gg,out bg);
-            NearD("clamped red gain",rg,4.0,0.001); NearD("clamped blue gain",bg,0.37,0.01);
-            byte r=120,g=100,b=90; ApplyWbBytesCore(ref r,ref g,ref b,2.0,1.0,0.5);
-            Eq("byte red gain",r,240); Eq("byte green gain",g,100); Eq("byte blue gain",b,45);
-            r=200; g=10; b=20; ApplyWbBytesCore(ref r,ref g,ref b,4.0,0.1,20.0);
-            Eq("byte red clamp",r,255); Eq("byte green min gain",g,3); Eq("byte blue max gain",b,80);
-            int ri=12000,gi=8000,bi=4000; ApplyWbRawCore(ref ri,ref gi,ref bi,16383,2.0,1.0,0.5);
-            Eq("raw red clip",ri,16383); Eq("raw green gain",gi,8000); Eq("raw blue gain",bi,2000);
-        }
         static void TestRaw14Alignment()
         {
             Params q=new Params{W=2,H=1,Stride=4,Offset=0,Format="RAW14_16B",Bits=14,Packed=false,Little=true,Lsb=true};
