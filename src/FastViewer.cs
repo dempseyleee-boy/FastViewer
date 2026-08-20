@@ -129,10 +129,10 @@ sealed class MainForm : Form
     RoundedPanel imagePanel=new RoundedPanel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
     byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
-    string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","GRAY8","Y8","MONO8","GRAY16","Y16","MONO16","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","NV21","NV12","I420","YV12","YUV420P","P010"};
+    string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","GRAY8","Y8","MONO8","GRAY16","Y16","MONO16","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","RGB_R14G14B14_48B","NV21","NV12","I420","YV12","YUV420P","P010"};
     string[] imageExports={"PNG","BMP","JPEG","TIFF"};
     string[] rgb8Exports={"RGB24","BGR24","RGBA32","BGRA32"};
-    string[] rgb16Exports={"RGB48","BGR48"};
+    string[] rgb16Exports={"RGB48","BGR48","RGB_R14G14B14_48B"};
     string[] grayExports={"GRAY8","Y8","MONO8","GRAY16","Y16","MONO16"};
     string[] yuv8Exports={"NV21","NV12","I420","YV12","YUV420P"};
     string[] yuv10Exports={"P010"};
@@ -285,7 +285,7 @@ sealed class MainForm : Form
         {
             d.Title="Open one or more phone camera files";
             d.Multiselect=true;
-            d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.gray;*.gray8;*.y8;*.mono8;*.gray16;*.y16;*.mono16;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.yuv;*.bin;*.dat|All files|*.*";
+            d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.rgb_*;*.bgr_*;*.gray;*.gray8;*.y8;*.mono8;*.gray16;*.y16;*.mono16;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.yuv;*.bin;*.dat|All files|*.*";
             if(d.ShowDialog(this)==DialogResult.OK){if(d.FileNames.Length>1)OpenMany(d.FileNames);else{pathBox.Text=d.FileName; ApplyFileName(d.FileName);}}
         }
     }
@@ -351,11 +351,12 @@ sealed class MainForm : Form
     static int BitsForFormat(string f)
     {
         string k=(f??"").ToUpperInvariant(); var m=Regex.Match(k,@"RAW(\d+)_"); if(m.Success)return Int32.Parse(m.Groups[1].Value);
-        return IsGray16FormatName(k)?16:8;
+        if(k=="RGB_R14G14B14_48B")return 14; return IsGray16FormatName(k)?16:8;
     }
     static bool IsGray8FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="GRAY8"||k=="Y8"||k=="MONO8";}
     static bool IsGray16FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="GRAY16"||k=="Y16"||k=="MONO16";}
     static bool IsGrayFormatName(string f){return IsGray8FormatName(f)||IsGray16FormatName(f);}
+    static bool IsRgb14FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB_R14G14B14_48B";}
     static bool TryGuessDimsFromFileSize(string path,string format,int offset,out int w,out int h)
     {
         w=h=0; if(!File.Exists(path))return false; long payload=new FileInfo(path).Length-offset; if(payload<=0)return false;
@@ -375,7 +376,7 @@ sealed class MainForm : Form
         if(IsGray16FormatName(f)||f=="RGB565"||f.StartsWith("RAW")&&f.EndsWith("16B")){if(payload%2!=0)return false; pixels=payload/2; return true;}
         if(f=="RGB24"||f=="BGR24"){if(payload%3!=0)return false; pixels=payload/3; return true;}
         if(f=="RGBA32"||f=="BGRA32"){if(payload%4!=0)return false; pixels=payload/4; return true;}
-        if(f=="RGB48"||f=="BGR48"){if(payload%6!=0)return false; pixels=payload/6; return true;}
+        if(IsRgb16FormatName(f)){if(payload%6!=0)return false; pixels=payload/6; return true;}
         return false;
     }
     static bool GuessDimsFromPixels(long pixels,out int w,out int h)
@@ -398,7 +399,7 @@ sealed class MainForm : Form
     string Format(){return fmtBox.SelectedItem==null?"RAW14_16B":fmtBox.SelectedItem.ToString().ToUpperInvariant();}
     int YuvMatrixIndex(){return yuvMatrixBox.SelectedIndex<0?0:yuvMatrixBox.SelectedIndex;}
     bool YuvFullRange(){return yuvRangeBox.SelectedIndex==1;}
-    static int DefaultStride(int w,string f){if(IsGray8FormatName(f))return w;if(IsGray16FormatName(f))return w*2;if(f=="RAW8_8B")return w;if(f=="RAW10_PACKED")return ((w+3)/4)*5;if(f=="RAW12_PACKED")return ((w+1)/2)*3;if(f=="RAW14_PACKED")return (w*14+7)/8;if(f=="RGB24"||f=="BGR24")return w*3;if(f=="RGBA32"||f=="BGRA32")return w*4;if(f=="RGB48"||f=="BGR48")return w*6;if(f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P")return w;return w*2;}
+    static int DefaultStride(int w,string f){if(IsGray8FormatName(f))return w;if(IsGray16FormatName(f))return w*2;if(f=="RAW8_8B")return w;if(f=="RAW10_PACKED")return ((w+3)/4)*5;if(f=="RAW12_PACKED")return ((w+1)/2)*3;if(f=="RAW14_PACKED")return (w*14+7)/8;if(f=="RGB24"||f=="BGR24")return w*3;if(f=="RGBA32"||f=="BGRA32")return w*4;if(IsRgb16FormatName(f))return w*6;if(f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P")return w;return w*2;}
 
     Params ReadParams()
     {
@@ -406,13 +407,13 @@ sealed class MainForm : Form
         string st=strideBox.Text.Trim(); q.Stride=String.IsNullOrWhiteSpace(st)?DefaultStride(q.W,q.Format):Int32.Parse(st);
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim()); q.Little=endianBox.SelectedIndex==0; q.Lsb=alignBox.SelectedIndex==0;
         q.Pattern=patternBox.SelectedIndex<0?0:patternBox.SelectedIndex; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
-        q.Packed=q.Format.EndsWith("PACKED"); q.Bits=8; var m=Regex.Match(q.Format,@"RAW(\d+)_"); if(m.Success)q.Bits=Int32.Parse(m.Groups[1].Value);
+        q.Packed=q.Format.EndsWith("PACKED"); q.Bits=BitsForFormat(q.Format);
         string b=blackBox.Text.Trim().ToLowerInvariant(), w=whiteBox.Text.Trim().ToLowerInvariant(); q.AutoLevels=b==""||w==""||b=="auto"||w=="auto"; q.Black=q.AutoLevels?0:Int32.Parse(b); q.White=q.AutoLevels?MaxRaw(q.Bits):Int32.Parse(w); double gv; if(!Double.TryParse(gammaBox.Text,out gv))gv=2.2; gammaValue=gv;
         if(q.W<=0||q.H<=0)throw new Exception("Width/height must be positive."); if(q.Stride<=0)throw new Exception("Stride must be positive or empty."); if(q.Offset<0)throw new Exception("Offset must be >=0."); return q;
     }
     static int MaxRaw(int bits){return bits>=16?65535:((1<<bits)-1);}
     bool IsRaw(){return p.Format.StartsWith("RAW");}
-    bool IsRgb(){return p.Format=="RGB24"||p.Format=="BGR24"||p.Format=="RGBA32"||p.Format=="BGRA32"||p.Format=="RGB48"||p.Format=="BGR48";}
+    bool IsRgb(){return p.Format=="RGB24"||p.Format=="BGR24"||p.Format=="RGBA32"||p.Format=="BGRA32"||IsRgb16FormatName(p.Format);}
     bool IsGray(){return IsGrayFormatName(p.Format);}
     bool IsYuv(){return !IsRaw()&&!IsRgb()&&!IsGray();}
     static long ExpectedBytes(Params q){if(q.Format=="P010")return (long)q.Offset+(long)q.Stride*q.H*3/2; if(q.Format=="NV21"||q.Format=="NV12"||q.Format=="I420"||q.Format=="YV12"||q.Format=="YUV420P")return (long)q.Offset+(long)q.Stride*q.H*3/2; return (long)q.Offset+(long)q.Stride*q.H;}
@@ -548,8 +549,30 @@ sealed class MainForm : Form
     }
 
     void RgbAt(int x,int y,out byte r,out byte g,out byte b){RgbAtCore(data,p,x,y,out r,out g,out b);}
+    static int ReadU16Core(byte[] source,int o,bool little){return little?(source[o]|(source[o+1]<<8)):((source[o]<<8)|source[o+1]);}
+    static void WriteU16Core(byte[] target,ref int o,ushort v,bool little){if(little){target[o++]=(byte)(v&255);target[o++]=(byte)(v>>8);}else{target[o++]=(byte)(v>>8);target[o++]=(byte)(v&255);}}
+    static byte RgbWordToByte(int word,int bits,bool lsb)
+    {
+        if(bits>=16)return (byte)(word>>8);
+        int max=(1<<bits)-1, v=lsb?(word&max):(word>>(16-bits));
+        if(v<0)v=0; else if(v>max)v=max;
+        return Clamp((v*255+max/2)/max);
+    }
+    static ushort ByteToRgbWord(int value,int bits,bool lsb)
+    {
+        int max=(1<<bits)-1, v=(Clamp(value)*max+127)/255;
+        return (ushort)(lsb?v:(v<<(16-bits)));
+    }
     static void RgbAtCore(byte[] source,Params q,int x,int y,out byte r,out byte g,out byte b)
     {
+        if(IsRgb14FormatName(q.Format))
+        {
+            int o=q.Offset+y*q.Stride+x*6;
+            r=RgbWordToByte(ReadU16Core(source,o,q.Little),14,q.Lsb);
+            g=RgbWordToByte(ReadU16Core(source,o+2,q.Little),14,q.Lsb);
+            b=RgbWordToByte(ReadU16Core(source,o+4,q.Little),14,q.Lsb);
+            return;
+        }
         if(q.Format=="RGB48"||q.Format=="BGR48")
         {
             int o=q.Offset+y*q.Stride+x*6;
@@ -660,7 +683,7 @@ sealed class MainForm : Form
     void AddMany(List<string> arr,string[] values){foreach(string s in values)AddUnique(arr,s);}
     bool IsRawFormatName(string f){return f!=null&&f.StartsWith("RAW");}
     bool IsRgb8FormatName(string f){return f=="RGB24"||f=="BGR24"||f=="RGBA32"||f=="BGRA32";}
-    bool IsRgb16FormatName(string f){return f=="RGB48"||f=="BGR48";}
+    static bool IsRgb16FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB48"||k=="BGR48"||IsRgb14FormatName(k);}
     bool IsYuv8FormatName(string f){return f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P";}
     bool IsP010FormatName(string f){return f=="P010";}
     List<string> AllowedExportsFor(Params q,out string hint)
@@ -682,7 +705,7 @@ sealed class MainForm : Form
         else if(IsRgb16FormatName(f))
         {
             AddMany(allowed,rgb16Exports); AddMany(allowed,rgb8Exports); AddMany(allowed,grayExports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}
-            hint="RAW output is locked: RGB48/BGR48 cannot restore sensor Bayer RAW.";
+            hint="RAW output is locked: RGB48/BGR48/RGB_R14G14B14_48B cannot restore sensor Bayer RAW.";
         }
         else if(IsGrayFormatName(f))
         {
@@ -749,6 +772,7 @@ sealed class MainForm : Form
         if(k=="JPEG")return ".jpg";
         if(k=="TIFF")return ".tif";
         if(k=="PNG"||k=="BMP")return "."+k.ToLowerInvariant();
+        if(k=="RGB_R14G14B14_48B")return "."+k+"_"+(alignBox.SelectedIndex==1?"MSB":"LSB");
         if(k.StartsWith("RAW"))
         {
             string pat=patternBox.SelectedItem==null?"GRBG":patternBox.SelectedItem.ToString().ToUpperInvariant();
@@ -853,7 +877,7 @@ sealed class MainForm : Form
     byte[] EncodeConvertedFrame(Bitmap bmp,string kind)
     {
         int stride; byte[] pix=BitmapBytes(bmp,out stride); int w=bmp.Width,h=bmp.Height;
-        if(kind=="RGB24"||kind=="BGR24"||kind=="RGBA32"||kind=="BGRA32"||kind=="RGB48"||kind=="BGR48")return EncodeRgbDump(pix,stride,w,h,kind);
+        if(kind=="RGB24"||kind=="BGR24"||kind=="RGBA32"||kind=="BGRA32"||IsRgb16FormatName(kind))return EncodeRgbDump(pix,stride,w,h,kind);
         if(IsGrayFormatName(kind))return EncodeGrayDump(pix,stride,w,h,kind);
         if(kind=="NV21"||kind=="NV12"||kind=="I420"||kind=="YV12"||kind=="YUV420P"||kind=="P010")return EncodeYuvDump(pix,stride,w,h,kind);
         if(kind.StartsWith("RAW"))return EncodeRawDump(pix,stride,w,h,kind);
@@ -872,10 +896,11 @@ sealed class MainForm : Form
             else if(kind=="BGRA32"){outb[o++]=(byte)b;outb[o++]=(byte)g;outb[o++]=(byte)r;outb[o++]=255;}
             else
             {
-                int c0=kind=="RGB48"?r:b,c1=g,c2=kind=="RGB48"?b:r;
-                ushort v0=(ushort)(c0*257),v1=(ushort)(c1*257),v2=(ushort)(c2*257); bool little=endianBox.SelectedIndex==0;
-                if(little){outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v2&255);outb[o++]=(byte)(v2>>8);}
-                else{outb[o++]=(byte)(v0>>8);outb[o++]=(byte)(v0&255);outb[o++]=(byte)(v1>>8);outb[o++]=(byte)(v1&255);outb[o++]=(byte)(v2>>8);outb[o++]=(byte)(v2&255);}
+                int c0=kind=="BGR48"?b:r,c1=g,c2=kind=="BGR48"?r:b; bool little=endianBox.SelectedIndex==0;
+                ushort v0,v1,v2;
+                if(IsRgb14FormatName(kind)){bool lsb=alignBox.SelectedIndex==0; v0=ByteToRgbWord(c0,14,lsb);v1=ByteToRgbWord(c1,14,lsb);v2=ByteToRgbWord(c2,14,lsb);}
+                else{v0=(ushort)(c0*257);v1=(ushort)(c1*257);v2=(ushort)(c2*257);}
+                WriteU16Core(outb,ref o,v0,little); WriteU16Core(outb,ref o,v1,little); WriteU16Core(outb,ref o,v2,little);
             }
         }
         return outb;
@@ -1067,6 +1092,7 @@ sealed class MainForm : Form
             Test("RAW14 16B alignment", TestRaw14Alignment);
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
+            Test("RGB R14G14B14 48B alignment decode", TestRgb14AlignmentDecode);
             Test("grayscale formats and dimension guess", TestGrayFormatsAndDimensionGuess);
             string sampleDir=SampleDirArg(args); if(!String.IsNullOrEmpty(sampleDir))Test("local golden camera samples",delegate{TestGoldenSamples(sampleDir);});
 
@@ -1113,8 +1139,11 @@ sealed class MainForm : Form
             EqBool("raw suffix msb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_MSB"),false);
             EqBool("raw suffix lsb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_LSB"),true);
             EqBool("gray suffix msb aligned",DetectLsbAlignedFromName("frame_640x480.GRAY16_MSB_ALIGNED"),false);
+            EqBool("rgb14 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R14G14B14_48B_MSB"),false);
             int pattern; string fmt; using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RAW14_GRBG_16B_MSB",out pattern);}
             if(fmt!="RAW14_16B"||pattern!=0)throw new Exception("RAW MSB suffix format parse failed: "+fmt+" pattern "+pattern);
+            using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RGB_R14G14B14_48B_MSB",out pattern);}
+            if(fmt!="RGB_R14G14B14_48B")throw new Exception("RGB14 MSB suffix format parse failed: "+fmt);
         }
         static void TestFilenameDimensions()
         {
@@ -1130,12 +1159,15 @@ sealed class MainForm : Form
             Eq("RAW14_16B stride",DefaultStride(8,"RAW14_16B"),16);
             Eq("RAW14_PACKED stride",DefaultStride(8,"RAW14_PACKED"),14);
             Eq("RGB48 stride",DefaultStride(8,"RGB48"),48);
+            Eq("RGB_R14G14B14_48B stride",DefaultStride(8,"RGB_R14G14B14_48B"),48);
+            Eq("RGB_R14G14B14_48B bits",BitsForFormat("RGB_R14G14B14_48B"),14);
             Eq("NV21 stride",DefaultStride(8,"NV21"),8);
             Eq("GRAY8 stride",DefaultStride(8,"GRAY8"),8);
             Eq("GRAY16 stride",DefaultStride(8,"GRAY16"),16);
             Params q=new Params{W=8,H=4,Format="NV21",Stride=8,Offset=7};
             EqLong("NV21 expected bytes",ExpectedBytes(q),55);
             q.Format="RGB48"; q.Stride=48; EqLong("RGB48 expected bytes",ExpectedBytes(q),199);
+            q.Format="RGB_R14G14B14_48B"; q.Stride=48; EqLong("RGB_R14G14B14_48B expected bytes",ExpectedBytes(q),199);
         }
 
         static void TestYuvRoundTrip()
@@ -1228,8 +1260,9 @@ sealed class MainForm : Form
         {
             Params q=new Params(); int w,h;
             if(!TryDims(path,out w,out h))throw new Exception("cannot parse dimensions: "+Path.GetFileName(path));
-            q.W=w; q.H=h; q.Offset=0; q.Little=true; q.Lsb=true; q.Pattern=0; q.YuvMatrix=0; q.YuvFullRange=false;
+            q.W=w; q.H=h; q.Offset=0; q.Little=true; q.Lsb=DetectLsbAlignedFromName(path); q.Pattern=0; q.YuvMatrix=0; q.YuvFullRange=false;
             string ext=Path.GetExtension(path).TrimStart('.').ToUpperInvariant();
+            ext=Regex.Replace(ext,@"_(?:LSB|MSB)(?:_?ALIGNED|_?ALIGN)?$","",RegexOptions.IgnoreCase);
             Match m=Regex.Match(ext,@"^RAW(8|10|12|14|16)_(RGGB|GRBG|GBRG|BGGR)_(PACKED|16B|8B)$",RegexOptions.IgnoreCase);
             if(m.Success)
             {
@@ -1239,9 +1272,9 @@ sealed class MainForm : Form
             else if(ext=="GRAY"||ext=="GREY"||ext=="Y"||ext=="MONO")q.Format="GRAY8";
             else if(ext=="GRAY8"||ext=="Y8"||ext=="MONO8"||ext=="GRAY16"||ext=="Y16"||ext=="MONO16")q.Format=ext;
             else if(ext=="NV21"||ext=="NV12"||ext=="I420"||ext=="YV12"||ext=="YUV420P"||ext=="P010")q.Format=ext;
-            else if(ext=="RGB24"||ext=="BGR24"||ext=="RGBA32"||ext=="BGRA32"||ext=="RGB48"||ext=="BGR48")q.Format=ext;
+            else if(ext=="RGB24"||ext=="BGR24"||ext=="RGBA32"||ext=="BGRA32"||IsRgb16FormatName(ext))q.Format=ext;
             else throw new Exception("unsupported sample extension: "+ext);
-            if(q.Bits==0){Match bm=Regex.Match(q.Format,@"RAW(\d+)_"); q.Bits=bm.Success?Int32.Parse(bm.Groups[1].Value):8;}
+            if(q.Bits==0)q.Bits=BitsForFormat(q.Format);
             q.Stride=DefaultStride(q.W,q.Format);
             return q;
         }
@@ -1259,7 +1292,7 @@ sealed class MainForm : Form
             {
                 byte v=GrayAtCore(bytes,q,q.W/2,q.H/2);
             }
-            else if(q.Format=="RGB48"||q.Format=="BGR48"||q.Format=="RGB24"||q.Format=="BGR24"||q.Format=="RGBA32"||q.Format=="BGRA32")
+            else if(IsRgb16FormatName(q.Format)||q.Format=="RGB24"||q.Format=="BGR24"||q.Format=="RGBA32"||q.Format=="BGRA32")
             {
                 byte r,g,b; RgbAtCore(bytes,q,q.W/2,q.H/2,out r,out g,out b);
             }
@@ -1268,6 +1301,21 @@ sealed class MainForm : Form
                 int a=bytes[q.Offset], b=bytes[q.Offset+(q.H/2)*q.Stride+q.W/2], c=bytes[q.Offset+q.Stride*q.H];
                 if(a<0||b<0||c<0)throw new Exception(label+" YUV sample read failed");
             }
+        }
+        static int ByteFrom14(int v){return (v*255+8191)/16383;}
+        static void TestRgb14AlignmentDecode()
+        {
+            int rv=0x1000, gv=0x2000, bv=0x3FFF; byte r,g,b;
+            Params q=new Params{W=1,H=1,Stride=6,Offset=0,Format="RGB_R14G14B14_48B",Bits=14,Little=true,Lsb=false};
+            ushort rw=(ushort)(rv<<2), gw=(ushort)(gv<<2), bw=(ushort)(bv<<2);
+            RgbAtCore(new byte[]{(byte)(rw&255),(byte)(rw>>8),(byte)(gw&255),(byte)(gw>>8),(byte)(bw&255),(byte)(bw>>8)},q,0,0,out r,out g,out b);
+            Eq("RGB14 MSB little R",r,ByteFrom14(rv)); Eq("RGB14 MSB little G",g,ByteFrom14(gv)); Eq("RGB14 MSB little B",b,ByteFrom14(bv));
+            q.Little=false;
+            RgbAtCore(new byte[]{(byte)(rw>>8),(byte)(rw&255),(byte)(gw>>8),(byte)(gw&255),(byte)(bw>>8),(byte)(bw&255)},q,0,0,out r,out g,out b);
+            Eq("RGB14 MSB big R",r,ByteFrom14(rv)); Eq("RGB14 MSB big G",g,ByteFrom14(gv)); Eq("RGB14 MSB big B",b,ByteFrom14(bv));
+            q.Little=true; q.Lsb=true; rw=(ushort)rv; gw=(ushort)gv; bw=(ushort)bv;
+            RgbAtCore(new byte[]{(byte)(rw&255),(byte)(rw>>8),(byte)(gw&255),(byte)(gw>>8),(byte)(bw&255),(byte)(bw>>8)},q,0,0,out r,out g,out b);
+            Eq("RGB14 LSB little R",r,ByteFrom14(rv)); Eq("RGB14 LSB little G",g,ByteFrom14(gv)); Eq("RGB14 LSB little B",b,ByteFrom14(bv));
         }
         static void TestRgb48Endian()
         {
