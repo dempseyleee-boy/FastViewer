@@ -129,10 +129,10 @@ sealed class MainForm : Form
     RoundedPanel imagePanel=new RoundedPanel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
     byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
-    string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","GRAY8","Y8","MONO8","GRAY16","Y16","MONO16","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","RGB_R12G12B12_48B","RGB_R14G14B14_48B","NV21","NV12","I420","YV12","YUV420P","P010"};
+    string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","GRAY8","Y8","MONO8","GRAY16","Y16","MONO16","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","RGB_R8G8B8_48B","RGB_R10G10B10_48B","RGB_R12G12B12_48B","RGB_R14G14B14_48B","RGB_R16G16B16_48B","BGR_B8G8R8_48B","BGR_B10G10R10_48B","BGR_B12G12R12_48B","BGR_B14G14R14_48B","BGR_B16G16R16_48B","NV21","NV12","I420","YV12","YUV420P","P010"};
     string[] imageExports={"PNG","BMP","JPEG","TIFF"};
     string[] rgb8Exports={"RGB24","BGR24","RGBA32","BGRA32"};
-    string[] rgb16Exports={"RGB48","BGR48","RGB_R12G12B12_48B","RGB_R14G14B14_48B"};
+    string[] rgb16Exports={"RGB48","BGR48","RGB_R8G8B8_48B","RGB_R10G10B10_48B","RGB_R12G12B12_48B","RGB_R14G14B14_48B","RGB_R16G16B16_48B","BGR_B8G8R8_48B","BGR_B10G10R10_48B","BGR_B12G12R12_48B","BGR_B14G14R14_48B","BGR_B16G16R16_48B"};
     string[] grayExports={"GRAY8","Y8","MONO8","GRAY16","Y16","MONO16"};
     string[] yuv8Exports={"NV21","NV12","I420","YV12","YUV420P"};
     string[] yuv10Exports={"P010"};
@@ -351,14 +351,20 @@ sealed class MainForm : Form
     static int BitsForFormat(string f)
     {
         string k=(f??"").ToUpperInvariant(); var m=Regex.Match(k,@"RAW(\d+)_"); if(m.Success)return Int32.Parse(m.Groups[1].Value);
-        if(k=="RGB_R12G12B12_48B")return 12; if(k=="RGB_R14G14B14_48B")return 14; return IsGray16FormatName(k)?16:8;
+        int rgbBits; if(TryRgbWordBits(k,out rgbBits))return rgbBits; return IsGray16FormatName(k)?16:8;
     }
     static bool IsGray8FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="GRAY8"||k=="Y8"||k=="MONO8";}
     static bool IsGray16FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="GRAY16"||k=="Y16"||k=="MONO16";}
     static bool IsGrayFormatName(string f){return IsGray8FormatName(f)||IsGray16FormatName(f);}
-    static bool IsRgb12FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB_R12G12B12_48B";}
-    static bool IsRgb14FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB_R14G14B14_48B";}
-    static bool IsRgbSub16FormatName(string f){return IsRgb12FormatName(f)||IsRgb14FormatName(f);}
+    static bool TryRgbWordBits(string f,out int bits)
+    {
+        bits=0; string k=(f??"").ToUpperInvariant();
+        Match m=Regex.Match(k,@"^(RGB)_R(8|10|12|14|16)G\2B\2_48B$|^(BGR)_B(8|10|12|14|16)G\4R\4_48B$");
+        if(!m.Success)return false;
+        bits=Int32.Parse(m.Groups[2].Success?m.Groups[2].Value:m.Groups[4].Value); return true;
+    }
+    static bool IsRgbWordFormatName(string f){int bits; return TryRgbWordBits(f,out bits);}
+    static bool IsBgrWordFormatName(string f){string k=(f??"").ToUpperInvariant(); int bits; return k.StartsWith("BGR_")&&TryRgbWordBits(k,out bits);}
     static bool TryGuessDimsFromFileSize(string path,string format,int offset,out int w,out int h)
     {
         w=h=0; if(!File.Exists(path))return false; long payload=new FileInfo(path).Length-offset; if(payload<=0)return false;
@@ -567,12 +573,13 @@ sealed class MainForm : Form
     }
     static void RgbAtCore(byte[] source,Params q,int x,int y,out byte r,out byte g,out byte b)
     {
-        if(IsRgbSub16FormatName(q.Format))
+        if(IsRgbWordFormatName(q.Format))
         {
             int o=q.Offset+y*q.Stride+x*6, bits=BitsForFormat(q.Format);
-            r=RgbWordToByte(ReadU16Core(source,o,q.Little),bits,q.Lsb);
-            g=RgbWordToByte(ReadU16Core(source,o+2,q.Little),bits,q.Lsb);
-            b=RgbWordToByte(ReadU16Core(source,o+4,q.Little),bits,q.Lsb);
+            byte c0=RgbWordToByte(ReadU16Core(source,o,q.Little),bits,q.Lsb);
+            byte c1=RgbWordToByte(ReadU16Core(source,o+2,q.Little),bits,q.Lsb);
+            byte c2=RgbWordToByte(ReadU16Core(source,o+4,q.Little),bits,q.Lsb);
+            if(IsBgrWordFormatName(q.Format)){b=c0;g=c1;r=c2;}else{r=c0;g=c1;b=c2;}
             return;
         }
         if(q.Format=="RGB48"||q.Format=="BGR48")
@@ -685,7 +692,7 @@ sealed class MainForm : Form
     void AddMany(List<string> arr,string[] values){foreach(string s in values)AddUnique(arr,s);}
     bool IsRawFormatName(string f){return f!=null&&f.StartsWith("RAW");}
     bool IsRgb8FormatName(string f){return f=="RGB24"||f=="BGR24"||f=="RGBA32"||f=="BGRA32";}
-    static bool IsRgb16FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB48"||k=="BGR48"||IsRgbSub16FormatName(k);}
+    static bool IsRgb16FormatName(string f){string k=(f??"").ToUpperInvariant();return k=="RGB48"||k=="BGR48"||IsRgbWordFormatName(k);}
     bool IsYuv8FormatName(string f){return f=="NV21"||f=="NV12"||f=="I420"||f=="YV12"||f=="YUV420P";}
     bool IsP010FormatName(string f){return f=="P010";}
     List<string> AllowedExportsFor(Params q,out string hint)
@@ -707,7 +714,7 @@ sealed class MainForm : Form
         else if(IsRgb16FormatName(f))
         {
             AddMany(allowed,rgb16Exports); AddMany(allowed,rgb8Exports); AddMany(allowed,grayExports); if(even){AddMany(allowed,yuv8Exports);AddMany(allowed,yuv10Exports);}
-            hint="RAW output is locked: RGB48/BGR48/RGB_R12G12B12_48B/RGB_R14G14B14_48B cannot restore sensor Bayer RAW.";
+            hint="RAW output is locked: RGB48/BGR48/RGB_RxGxBx_48B/BGR_BxGxRx_48B cannot restore sensor Bayer RAW.";
         }
         else if(IsGrayFormatName(f))
         {
@@ -774,7 +781,7 @@ sealed class MainForm : Form
         if(k=="JPEG")return ".jpg";
         if(k=="TIFF")return ".tif";
         if(k=="PNG"||k=="BMP")return "."+k.ToLowerInvariant();
-        if(IsRgbSub16FormatName(k))return "."+k+"_"+(alignBox.SelectedIndex==1?"MSB":"LSB");
+        if(IsRgbWordFormatName(k))return "."+k+"_"+(alignBox.SelectedIndex==1?"MSB":"LSB");
         if(k.StartsWith("RAW"))
         {
             string pat=patternBox.SelectedItem==null?"GRBG":patternBox.SelectedItem.ToString().ToUpperInvariant();
@@ -898,9 +905,9 @@ sealed class MainForm : Form
             else if(kind=="BGRA32"){outb[o++]=(byte)b;outb[o++]=(byte)g;outb[o++]=(byte)r;outb[o++]=255;}
             else
             {
-                int c0=kind=="BGR48"?b:r,c1=g,c2=kind=="BGR48"?r:b; bool little=endianBox.SelectedIndex==0;
+                int c0=(kind=="BGR48"||IsBgrWordFormatName(kind))?b:r,c1=g,c2=(kind=="BGR48"||IsBgrWordFormatName(kind))?r:b; bool little=endianBox.SelectedIndex==0;
                 ushort v0,v1,v2;
-                if(IsRgbSub16FormatName(kind)){bool lsb=alignBox.SelectedIndex==0; int bits=BitsForFormat(kind); v0=ByteToRgbWord(c0,bits,lsb);v1=ByteToRgbWord(c1,bits,lsb);v2=ByteToRgbWord(c2,bits,lsb);}
+                if(IsRgbWordFormatName(kind)){bool lsb=alignBox.SelectedIndex==0; int bits=BitsForFormat(kind); v0=ByteToRgbWord(c0,bits,lsb);v1=ByteToRgbWord(c1,bits,lsb);v2=ByteToRgbWord(c2,bits,lsb);}
                 else{v0=(ushort)(c0*257);v1=(ushort)(c1*257);v2=(ushort)(c2*257);}
                 WriteU16Core(outb,ref o,v0,little); WriteU16Core(outb,ref o,v1,little); WriteU16Core(outb,ref o,v2,little);
             }
@@ -1094,7 +1101,7 @@ sealed class MainForm : Form
             Test("RAW14 16B alignment", TestRaw14Alignment);
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
-            Test("RGB R12/R14 48B alignment decode", TestRgbSub16AlignmentDecode);
+            Test("RGB/BGR word 48B alignment decode", TestRgbSub16AlignmentDecode);
             Test("grayscale formats and dimension guess", TestGrayFormatsAndDimensionGuess);
             string sampleDir=SampleDirArg(args); if(!String.IsNullOrEmpty(sampleDir))Test("local golden camera samples",delegate{TestGoldenSamples(sampleDir);});
 
@@ -1141,14 +1148,21 @@ sealed class MainForm : Form
             EqBool("raw suffix msb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_MSB"),false);
             EqBool("raw suffix lsb",DetectLsbAlignedFromName("frame_640x480.RAW14_GRBG_16B_LSB"),true);
             EqBool("gray suffix msb aligned",DetectLsbAlignedFromName("frame_640x480.GRAY16_MSB_ALIGNED"),false);
+            EqBool("rgb8 suffix lsb",DetectLsbAlignedFromName("frame_640x480.RGB_R8G8B8_48B_LSB"),true);
+            EqBool("rgb10 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R10G10B10_48B_MSB"),false);
             EqBool("rgb12 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R12G12B12_48B_MSB"),false);
             EqBool("rgb14 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R14G14B14_48B_MSB"),false);
+            EqBool("bgr12 suffix msb",DetectLsbAlignedFromName("frame_640x480.BGR_B12G12R12_48B_MSB"),false);
             int pattern; string fmt; using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RAW14_GRBG_16B_MSB",out pattern);}
             if(fmt!="RAW14_16B"||pattern!=0)throw new Exception("RAW MSB suffix format parse failed: "+fmt+" pattern "+pattern);
+            using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RGB_R10G10B10_48B_MSB",out pattern);}
+            if(fmt!="RGB_R10G10B10_48B")throw new Exception("RGB10 MSB suffix format parse failed: "+fmt);
             using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RGB_R12G12B12_48B_MSB",out pattern);}
             if(fmt!="RGB_R12G12B12_48B")throw new Exception("RGB12 MSB suffix format parse failed: "+fmt);
             using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RGB_R14G14B14_48B_MSB",out pattern);}
             if(fmt!="RGB_R14G14B14_48B")throw new Exception("RGB14 MSB suffix format parse failed: "+fmt);
+            using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.BGR_B12G12R12_48B_MSB",out pattern);}
+            if(fmt!="BGR_B12G12R12_48B")throw new Exception("BGR12 MSB suffix format parse failed: "+fmt);
         }
         static void TestFilenameDimensions()
         {
@@ -1164,10 +1178,14 @@ sealed class MainForm : Form
             Eq("RAW14_16B stride",DefaultStride(8,"RAW14_16B"),16);
             Eq("RAW14_PACKED stride",DefaultStride(8,"RAW14_PACKED"),14);
             Eq("RGB48 stride",DefaultStride(8,"RGB48"),48);
+            Eq("RGB_R8G8B8_48B bits",BitsForFormat("RGB_R8G8B8_48B"),8);
+            Eq("RGB_R10G10B10_48B bits",BitsForFormat("RGB_R10G10B10_48B"),10);
             Eq("RGB_R12G12B12_48B stride",DefaultStride(8,"RGB_R12G12B12_48B"),48);
             Eq("RGB_R12G12B12_48B bits",BitsForFormat("RGB_R12G12B12_48B"),12);
             Eq("RGB_R14G14B14_48B stride",DefaultStride(8,"RGB_R14G14B14_48B"),48);
             Eq("RGB_R14G14B14_48B bits",BitsForFormat("RGB_R14G14B14_48B"),14);
+            Eq("RGB_R16G16B16_48B bits",BitsForFormat("RGB_R16G16B16_48B"),16);
+            Eq("BGR_B12G12R12_48B bits",BitsForFormat("BGR_B12G12R12_48B"),12);
             Eq("NV21 stride",DefaultStride(8,"NV21"),8);
             Eq("GRAY8 stride",DefaultStride(8,"GRAY8"),8);
             Eq("GRAY16 stride",DefaultStride(8,"GRAY16"),16);
@@ -1176,6 +1194,7 @@ sealed class MainForm : Form
             q.Format="RGB48"; q.Stride=48; EqLong("RGB48 expected bytes",ExpectedBytes(q),199);
             q.Format="RGB_R12G12B12_48B"; q.Stride=48; EqLong("RGB_R12G12B12_48B expected bytes",ExpectedBytes(q),199);
             q.Format="RGB_R14G14B14_48B"; q.Stride=48; EqLong("RGB_R14G14B14_48B expected bytes",ExpectedBytes(q),199);
+            q.Format="BGR_B12G12R12_48B"; q.Stride=48; EqLong("BGR_B12G12R12_48B expected bytes",ExpectedBytes(q),199);
         }
 
         static void TestYuvRoundTrip()
@@ -1316,19 +1335,24 @@ sealed class MainForm : Form
             byte r,g,b; int shift=16-bits;
             Params q=new Params{W=1,H=1,Stride=6,Offset=0,Format=format,Bits=bits,Little=true,Lsb=false};
             ushort rw=(ushort)(rv<<shift), gw=(ushort)(gv<<shift), bw=(ushort)(bv<<shift);
-            RgbAtCore(new byte[]{(byte)(rw&255),(byte)(rw>>8),(byte)(gw&255),(byte)(gw>>8),(byte)(bw&255),(byte)(bw>>8)},q,0,0,out r,out g,out b);
+            ushort w0=IsBgrWordFormatName(format)?bw:rw, w1=gw, w2=IsBgrWordFormatName(format)?rw:bw;
+            RgbAtCore(new byte[]{(byte)(w0&255),(byte)(w0>>8),(byte)(w1&255),(byte)(w1>>8),(byte)(w2&255),(byte)(w2>>8)},q,0,0,out r,out g,out b);
             Eq(label+" MSB little R",r,ByteFromBits(rv,bits)); Eq(label+" MSB little G",g,ByteFromBits(gv,bits)); Eq(label+" MSB little B",b,ByteFromBits(bv,bits));
             q.Little=false;
-            RgbAtCore(new byte[]{(byte)(rw>>8),(byte)(rw&255),(byte)(gw>>8),(byte)(gw&255),(byte)(bw>>8),(byte)(bw&255)},q,0,0,out r,out g,out b);
+            RgbAtCore(new byte[]{(byte)(w0>>8),(byte)(w0&255),(byte)(w1>>8),(byte)(w1&255),(byte)(w2>>8),(byte)(w2&255)},q,0,0,out r,out g,out b);
             Eq(label+" MSB big R",r,ByteFromBits(rv,bits)); Eq(label+" MSB big G",g,ByteFromBits(gv,bits)); Eq(label+" MSB big B",b,ByteFromBits(bv,bits));
-            q.Little=true; q.Lsb=true; rw=(ushort)rv; gw=(ushort)gv; bw=(ushort)bv;
-            RgbAtCore(new byte[]{(byte)(rw&255),(byte)(rw>>8),(byte)(gw&255),(byte)(gw>>8),(byte)(bw&255),(byte)(bw>>8)},q,0,0,out r,out g,out b);
+            q.Little=true; q.Lsb=true; rw=(ushort)rv; gw=(ushort)gv; bw=(ushort)bv; w0=IsBgrWordFormatName(format)?bw:rw; w1=gw; w2=IsBgrWordFormatName(format)?rw:bw;
+            RgbAtCore(new byte[]{(byte)(w0&255),(byte)(w0>>8),(byte)(w1&255),(byte)(w1>>8),(byte)(w2&255),(byte)(w2>>8)},q,0,0,out r,out g,out b);
             Eq(label+" LSB little R",r,ByteFromBits(rv,bits)); Eq(label+" LSB little G",g,ByteFromBits(gv,bits)); Eq(label+" LSB little B",b,ByteFromBits(bv,bits));
         }
         static void TestRgbSub16AlignmentDecode()
         {
+            CheckRgbSub16Decode("RGB8","RGB_R8G8B8_48B",8,0x40,0x80,0xFF);
+            CheckRgbSub16Decode("RGB10","RGB_R10G10B10_48B",10,0x100,0x200,0x3FF);
             CheckRgbSub16Decode("RGB12","RGB_R12G12B12_48B",12,0x400,0x800,0xFFF);
             CheckRgbSub16Decode("RGB14","RGB_R14G14B14_48B",14,0x1000,0x2000,0x3FFF);
+            CheckRgbSub16Decode("RGB16","RGB_R16G16B16_48B",16,0x4000,0x8000,0xFFFF);
+            CheckRgbSub16Decode("BGR12","BGR_B12G12R12_48B",12,0x400,0x800,0xFFF);
         }
         static void TestRgb48Endian()
         {
