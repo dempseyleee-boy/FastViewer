@@ -76,6 +76,7 @@ face_3280x2464.RAW14_GRBG_16B_LSB
 - `.bgra` / `.bgra32`
 - `.rgb48`
 - `.bgr48`
+- `.RGB_R12G12B12_48B_MSB` / `.RGB_R12G12B12_48B_LSB`
 - `.RGB_R14G14B14_48B_MSB` / `.RGB_R14G14B14_48B_LSB`
 
 ### 灰度 / 单通道
@@ -130,6 +131,7 @@ face_3280x2464.RAW14_GRBG_16B_LSB
 - `BGRA32`
 - `RGB48`
 - `BGR48`
+- `RGB_R12G12B12_48B`
 - `RGB_R14G14B14_48B`
 - `NV21`
 - `NV12`
@@ -142,7 +144,7 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 
 灰度格式导出会生成单通道 dump；`GRAY8 / Y8 / MONO8` 为 1 byte per pixel，`GRAY16 / Y16 / MONO16` 为 2 bytes per pixel，并尊重 `Endian`。YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。
 
-`RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。`RGB_R14G14B14_48B` 表示 RGB 三通道各 14-bit，使用 16-bit word 承载，因此仍然是 48 bit per pixel；后缀末尾的 `_MSB` / `_LSB` 会自动选择 `Bits` 下拉框里的 bit alignment。若下游工具显示发黑或颜色异常，通常是字节序或 bit alignment 不一致：可尝试切换 `Endian` 或 `Bits` 后再打开/导出。
+`RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。`RGB_R12G12B12_48B` / `RGB_R14G14B14_48B` 表示 RGB 三通道各 12-bit / 14-bit，使用 16-bit word 承载，因此仍然是 48 bit per pixel；后缀末尾的 `_MSB` / `_LSB` 会自动选择 `Bits` 下拉框里的 bit alignment。若下游工具显示发黑或颜色异常，通常是字节序或 bit alignment 不一致：可尝试切换 `Endian` 或 `Bits` 后再打开/导出。
 
 每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，方便后续复现和排查。
 
@@ -198,12 +200,12 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 
 - 文件名宽高解析，例如 `3280x2464`、`w1920h1080`。
 - `_MSB / _LSB / _MSB_ALIGNED / _LSB_ALIGNED` 后缀自动选择 bit alignment。
-- 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`GRAY8 / GRAY16`、`RGB48`、`RGB_R14G14B14_48B`、`NV21`。
+- 默认 stride 和期望文件大小，例如 `RAW14_16B`、`RAW14_PACKED`、`GRAY8 / GRAY16`、`RGB48`、`RGB_R12G12B12_48B`、`RGB_R14G14B14_48B`、`NV21`。
 - `BT.601 / BT.709 / BT.2020` 与 `Limited / Full` 的 YUV ↔ RGB round-trip。
 - `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。
 - `RAW14_PACKED` bitstream 取样。
 - `RGB48 / BGR48` 的 little / big endian 解码。
-- `RGB_R14G14B14_48B_MSB / LSB` 的 14-bit alignment 解码。
+- `RGB_R12G12B12_48B_MSB / LSB` 和 `RGB_R14G14B14_48B_MSB / LSB` 的 bit alignment 解码。
 - 灰度格式读取，以及无宽高 `.gray` 文件的尺寸猜测。
 
 报告会写到 `dist/FastViewer.selftest.txt`；退出码为 `0` 表示通过，非 `0` 表示有回归。
