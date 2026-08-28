@@ -1101,6 +1101,7 @@ sealed class MainForm : Form
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
             Test("RGB word 48B alignment decode", TestRgbWordAlignmentDecode);
+            Test("repository fixture files", TestRepositoryFixtureFiles);
             Test("grayscale formats and dimension guess", TestGrayFormatsAndDimensionGuess);
             string sampleDir=SampleDirArg(args); if(!String.IsNullOrEmpty(sampleDir))Test("local golden camera samples",delegate{TestGoldenSamples(sampleDir);});
 
@@ -1140,6 +1141,17 @@ sealed class MainForm : Form
         {
             for(int i=1;i<args.Length-1;i++)if(String.Equals(args[i],"--sample-dir",StringComparison.OrdinalIgnoreCase))return args[i+1];
             return null;
+        }
+        static string FixtureDir()
+        {
+            string baseDir=AppDomain.CurrentDomain.BaseDirectory;
+            string[] candidates=new string[]{
+                Path.GetFullPath(Path.Combine(baseDir,"..","tests","fixtures")),
+                Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,"tests","fixtures")),
+                Path.GetFullPath(Path.Combine(Environment.CurrentDirectory,"fixtures"))
+            };
+            for(int i=0;i<candidates.Length;i++)if(Directory.Exists(candidates[i]))return candidates[i];
+            return candidates[0];
         }
         static void TestAlignmentSuffixDetection()
         {
@@ -1348,6 +1360,38 @@ sealed class MainForm : Form
             CheckRgbWordDecode("RGB12","RGB_R12G12B12_48B",12,0x400,0x800,0xFFF);
             CheckRgbWordDecode("RGB14","RGB_R14G14B14_48B",14,0x1000,0x2000,0x3FFF);
             CheckRgbWordDecode("RGB16","RGB_R16G16B16_48B",16,0x4000,0x8000,0xFFFF);
+        }
+        static int FixtureValue(int x,int y,int bits,int channel)
+        {
+            int max=bits>=16?65535:((1<<bits)-1);
+            int v=(channel==0?(x*257+y*73+17):(channel==1?(x*149+y*191+29):(x*211+y*113+43)));
+            return v&max;
+        }
+        static void CheckFixturePixel(byte[] bytes,Params q,int x,int y,string label)
+        {
+            int bits=BitsForFormat(q.Format); byte r,g,b;
+            RgbAtCore(bytes,q,x,y,out r,out g,out b);
+            Eq(label+" R",r,ByteFromBits(FixtureValue(x,y,bits,0),bits));
+            Eq(label+" G",g,ByteFromBits(FixtureValue(x,y,bits,1),bits));
+            Eq(label+" B",b,ByteFromBits(FixtureValue(x,y,bits,2),bits));
+        }
+        static void TestRepositoryFixtureFiles()
+        {
+            string dir=FixtureDir();
+            if(!Directory.Exists(dir))throw new Exception("fixture dir not found: "+dir);
+            string[] files=Directory.GetFiles(dir,"*.RGB_R*G*B*_48B_*");
+            if(files.Length<5)throw new Exception("expected at least 5 RGB word fixture files, got "+files.Length);
+            for(int i=0;i<files.Length;i++)
+            {
+                Params q=ParamsFromSamplePath(files[i]);
+                Eq("fixture width",q.W,16); Eq("fixture height",q.H,16);
+                EqLong(Path.GetFileName(files[i])+" expected bytes",ExpectedBytes(q),new FileInfo(files[i]).Length);
+                byte[] bytes=File.ReadAllBytes(files[i]);
+                CheckFixturePixel(bytes,q,0,0,Path.GetFileName(files[i])+" 0,0");
+                CheckFixturePixel(bytes,q,7,9,Path.GetFileName(files[i])+" 7,9");
+                CheckFixturePixel(bytes,q,15,15,Path.GetFileName(files[i])+" 15,15");
+                report.AppendLine("       fixture "+Path.GetFileName(files[i])+" · "+q.Format+" · "+(q.Lsb?"LSB":"MSB")+" · bytes ok");
+            }
         }
         static void TestRgb48Endian()
         {

@@ -212,9 +212,12 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 - `RAW14_PACKED` bitstream 取样。
 - `RGB48 / BGR48` 的 little / big endian 解码。
 - `RGB_RnGnBn_48B_MSB / LSB` 的 bit alignment 解码。
+- 仓库内置 fixture 文件的后缀解析、expected bytes 和像素解码。
 - 灰度格式读取，以及无宽高 `.gray` 文件的尺寸猜测。
 
 报告会写到 `dist/FastViewer.selftest.txt`；退出码为 `0` 表示通过，非 `0` 表示有回归。
+
+`tests/fixtures` 里包含 16x16 的小型 RGB word dump 文件，覆盖 `RGB_R8G8B8_48B_LSB`、`RGB_R10G10B10_48B_MSB`、`RGB_R12G12B12_48B_MSB`、`RGB_R14G14B14_48B_MSB`、`RGB_R16G16B16_48B_LSB`。self-test 会真实从磁盘读取这些文件，并校验文件名解析、字节数和固定像素点解码。
 
 如果本机有真实 camera dump 样张，可以运行本地 golden sample 测试：
 
