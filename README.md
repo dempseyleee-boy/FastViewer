@@ -152,6 +152,8 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。`RGB_R8G8B8_48B` / `RGB_R10G10B10_48B` / `RGB_R12G12B12_48B` / `RGB_R14G14B14_48B` / `RGB_R16G16B16_48B` 表示 RGB 三通道各 N-bit，使用 16-bit word 承载，因此仍然是 48 bit per pixel；当前支持 R/G/B 三个通道位深相同的 8/10/12/14/16-bit 组合；后缀末尾的 `_MSB` / `_LSB` 会自动选择 `Bits` 下拉框里的 bit alignment。若下游工具显示发黑或颜色异常，通常是字节序或 bit alignment 不一致：可尝试切换 `Endian` 或 `Bits` 后再打开/导出。
 
+对于 `RGB_RnGnBn_48B`，如果同目录存在文件名前缀匹配的 TXT，FastViewer 会自动读取其中的 `CCM` 和 `ipe_gamma_table_x / ipe_gamma_table_y`，按 `run_rgb.bat` 的 `mode=2` 顺序还原预览与图片导出的色彩。状态栏会显示实际使用的 `color TXT` 文件；`resultinfo.txt` 不参与匹配。缺少完整 CCM 或 IPE Gamma 表时保持原始线性显示。
+
 每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，方便后续复现和排查。
 
 ## 导出通路锁定策略
@@ -211,6 +213,7 @@ dist\FastViewer.exe --self-test dist\FastViewer.selftest.txt
 - `RAW14_16B` 的 LSB / MSB aligned，以及 little / big endian。
 - `RAW14_PACKED` bitstream 取样。
 - `RGB48 / BGR48` 的 little / big endian 解码。
+- `RGB_RnGnBn_48B` 同名 TXT 的 CCM / IPE Gamma 配置识别与 LUT。
 - `RGB_RnGnBn_48B_MSB / LSB` 的 bit alignment 解码。
 - 仓库内置 fixture 文件的后缀解析、expected bytes 和像素解码。
 - 灰度格式读取，以及无宽高 `.gray` 文件的尺寸猜测。

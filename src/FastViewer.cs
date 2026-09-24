@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Drawing.Imaging;
 using System.Drawing.Drawing2D;
 using System.IO;
+using System.Globalization;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using System.Text;
@@ -37,6 +38,16 @@ sealed class Params
 }
 
 
+sealed class RgbColorProfile
+{
+    public string Path;
+    public double[] Ccm;
+    public double[] GammaX;
+    public double[] GammaY;
+    public byte[] GammaLut;
+    public int[][] Mix;
+}
+
 sealed class ViewerItem
 {
     public string Path;
@@ -44,6 +55,7 @@ sealed class ViewerItem
     public Bitmap Bitmap;
     public int Black,White;
     public string Error;
+    public RgbColorProfile ColorProfile;
 }
 static class UiShape
 {
@@ -127,7 +139,8 @@ sealed class MainForm : Form
     TextBox blackBox=new TextBox(), whiteBox=new TextBox(), gammaBox=new TextBox();
     ComboBox fmtBox=new ComboBox(), endianBox=new ComboBox(), alignBox=new ComboBox(), patternBox=new ComboBox(), viewBox=new ComboBox(), rotBox=new ComboBox(), yuvMatrixBox=new ComboBox(), yuvRangeBox=new ComboBox(), exportBox=new ComboBox();
     RoundedPanel imagePanel=new RoundedPanel(); FlowLayoutPanel gallery=new FlowLayoutPanel(); PictureBox pic=new PictureBox(); Label status=new Label();
-    byte[] data; string openedPath; string[] openedPaths; Params p; Bitmap current; double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
+    byte[] data; string openedPath; string[] openedPaths; Params p; RgbColorProfile rgbColorProfile; Bitmap current;
+    static Dictionary<string,RgbColorProfile> rgbColorProfileCache=new Dictionary<string,RgbColorProfile>(StringComparer.OrdinalIgnoreCase); double zoom=1.0, galleryZoom=1.0, gammaValue=2.2; bool multiMode=false; int autoBlack=0, autoWhite=16383; byte[] stretchLut; List<Bitmap> galleryBitmaps=new List<Bitmap>(); List<ViewerItem> galleryItems=new List<ViewerItem>(); string exportLockHint="";
 
     string[] formats={"RAW8_8B","RAW10_16B","RAW10_PACKED","RAW12_16B","RAW12_PACKED","RAW14_16B","RAW14_PACKED","RAW16_16B","GRAY8","Y8","MONO8","GRAY16","Y16","MONO16","RGB24","BGR24","RGBA32","BGRA32","RGB48","BGR48","RGB_R8G8B8_48B","RGB_R10G10B10_48B","RGB_R12G12B12_48B","RGB_R14G14B14_48B","RGB_R16G16B16_48B","NV21","NV12","I420","YV12","YUV420P","P010"};
     string[] imageExports={"PNG","BMP","JPEG","TIFF"};
@@ -430,12 +443,12 @@ sealed class MainForm : Form
     {
         try
         {
-            if(String.IsNullOrWhiteSpace(pathBox.Text))Browse(); if(String.IsNullOrWhiteSpace(pathBox.Text))return; openedPath=pathBox.Text.Trim(); ApplyFileName(openedPath); p=ReadParams(); openedPaths=new string[]{openedPath}; ShowSingleMode();
+            if(String.IsNullOrWhiteSpace(pathBox.Text))Browse(); if(String.IsNullOrWhiteSpace(pathBox.Text))return; openedPath=pathBox.Text.Trim(); ApplyFileName(openedPath); p=ReadParams(); rgbColorProfile=IsRgbWordFormatName(p.Format)?LoadRgbColorProfile(openedPath):null; openedPaths=new string[]{openedPath}; ShowSingleMode();
             long expected=ExpectedBytes(p), len=new FileInfo(openedPath).Length; if(len<expected)throw new Exception("File too small: "+len+" bytes, expected at least "+expected+".");
             status.Text="Reading whole file..."; ThreadPool.QueueUserWorkItem(delegate{try{byte[] bytes=File.ReadAllBytes(openedPath); BeginInvoke((Action)delegate{data=bytes; EstimateLevels(); BuildStretchLut(); Render(true);});}catch(Exception ex){ShowErr(ex);}});
         }catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}
     }
-    void RefreshPreview(){try{if(multiMode&&openedPaths!=null&&openedPaths.Length>1){OpenMany(openedPaths);return;} p=ReadParams(); if(data==null){OpenFileNow();return;} EstimateLevels(); BuildStretchLut(); Render(true);}catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}}
+    void RefreshPreview(){try{if(multiMode&&openedPaths!=null&&openedPaths.Length>1){OpenMany(openedPaths);return;} p=ReadParams(); rgbColorProfile=openedPath!=null&&IsRgbWordFormatName(p.Format)?LoadRgbColorProfile(openedPath):null; if(data==null){OpenFileNow();return;} EstimateLevels(); BuildStretchLut(); Render(true);}catch(Exception ex){MessageBox.Show(this,ex.Message,Text,MessageBoxButtons.OK,MessageBoxIcon.Error);}}
     void FitWindow(){if(multiMode){galleryZoom=1.0;LayoutGallery();UpdateStatus();return;} if(current!=null){zoom=FitZoomFor(current);ApplyZoom();imagePanel.AutoScrollPosition=new Point(0,0);UpdateStatus();}else RefreshPreview();}
 
 
@@ -481,7 +494,7 @@ sealed class MainForm : Form
                 Params q=ParamsForFile(fp);
                 long expected=ExpectedBytes(q), len=new FileInfo(fp).Length;
                 if(len<expected)throw new Exception(Path.GetFileName(fp)+" too small: "+len+" bytes, expected at least "+expected+".");
-                jobs.Add(new ViewerItem{Path=fp,P=q});
+                jobs.Add(new ViewerItem{Path=fp,P=q,ColorProfile=IsRgbWordFormatName(q.Format)?LoadRgbColorProfile(fp):null});
             }
             UpdateExportChoicesForItems(jobs); openedPaths=paths; openedPath=paths[paths.Length-1]; p=jobs[jobs.Count-1].P; pathBox.Text=paths.Length+" files selected";
             ShowMultiStart();
@@ -494,7 +507,7 @@ sealed class MainForm : Form
                     try
                     {
                         byte[] bytes=File.ReadAllBytes(job.Path);
-                        p=job.P; data=bytes; EstimateLevels(); job.Black=autoBlack; job.White=autoWhite; BuildStretchLut(); job.Bitmap=BuildBitmap(true);
+                        p=job.P; data=bytes; rgbColorProfile=job.ColorProfile; EstimateLevels(); job.Black=autoBlack; job.White=autoWhite; BuildStretchLut(); job.Bitmap=BuildBitmap(true);
                         int n=++done;
                         BeginInvoke((Action)delegate{AddImageCard(job,n,jobs.Count);});
                     }
@@ -516,7 +529,7 @@ sealed class MainForm : Form
         var inner=new TableLayoutPanel{Dock=DockStyle.Fill,ColumnCount=1,RowCount=2,BackColor=Color.White};
         inner.RowStyles.Add(new RowStyle(SizeType.Absolute,50));
         inner.RowStyles.Add(new RowStyle(SizeType.Percent,100));
-        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.Black,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
+        var cap=new Label{Text=Path.GetFileName(job.Path)+"\r\n"+job.P.W+"x"+job.P.H+"  "+job.P.Format+(job.ColorProfile!=null?"  TXT color":"")+"  levels "+job.Black+"-"+job.White,Dock=DockStyle.Fill,ForeColor=Color.Black,TextAlign=ContentAlignment.MiddleLeft,AutoEllipsis=true,BackColor=Color.White,Font=new Font("Consolas",8.4F)};
         var pb=new PictureBox{Dock=DockStyle.Fill,Image=job.Bitmap,SizeMode=PictureBoxSizeMode.Zoom,BackColor=Color.Black};
         inner.Controls.Add(cap,0,0); inner.Controls.Add(pb,0,1); card.Controls.Add(inner); gallery.Controls.Add(card); LayoutGallery(); status.Text="Rendering "+done+" / "+total+" images...";
     }
@@ -556,7 +569,61 @@ sealed class MainForm : Form
         else{g=v; if(BayerSite(x-1,y)=='R'){r=(RawAt(x-1,y)+RawAt(x+1,y))>>1;b=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}else{b=(RawAt(x-1,y)+RawAt(x+1,y))>>1;r=(RawAt(x,y-1)+RawAt(x,y+1))>>1;}}
     }
 
-    void RgbAt(int x,int y,out byte r,out byte g,out byte b){RgbAtCore(data,p,x,y,out r,out g,out b);}
+    static double[] ParseNumberList(string value)
+    {
+        string[] parts=value.Split(new char[]{','},StringSplitOptions.RemoveEmptyEntries); var result=new List<double>();
+        foreach(string part in parts){double v;if(Double.TryParse(part.Trim(),NumberStyles.Float,CultureInfo.InvariantCulture,out v))result.Add(v);}
+        return result.ToArray();
+    }
+    static RgbColorProfile LoadRgbColorProfile(string imagePath)
+    {
+        try
+        {
+            string dir=Path.GetDirectoryName(imagePath), stem=Path.GetFileNameWithoutExtension(imagePath), best=null; int bestLength=-1;
+            foreach(string candidate in Directory.GetFiles(dir,"*.txt"))
+            {
+                string name=Path.GetFileNameWithoutExtension(candidate);
+                if(name.IndexOf("resultinfo",StringComparison.OrdinalIgnoreCase)>=0)continue;
+                if(stem.StartsWith(name,StringComparison.OrdinalIgnoreCase)&&name.Length>bestLength){best=candidate;bestLength=name.Length;}
+            }
+            if(best==null)return null;
+            string cacheKey=best+"|"+File.GetLastWriteTimeUtc(best).Ticks+"|"+new FileInfo(best).Length; RgbColorProfile cached;
+            if(rgbColorProfileCache.TryGetValue(cacheKey,out cached))return cached;
+            double[] ccm=null,gx=null,gy=null;
+            foreach(string rawLine in File.ReadLines(best))
+            {
+                string line=rawLine.Trim(); int split=line.IndexOf(':');
+                if(split>0&&line.Substring(0,split).Trim().Equals("CCM",StringComparison.OrdinalIgnoreCase)&&ccm==null)ccm=ParseNumberList(line.Substring(split+1));
+                split=line.IndexOf('='); if(split<=0)continue;
+                string key=line.Substring(0,split).Trim();
+                if(key.Equals("ipe_gamma_table_x",StringComparison.OrdinalIgnoreCase)&&gx==null)gx=ParseNumberList(line.Substring(split+1));
+                else if(key.Equals("ipe_gamma_table_y",StringComparison.OrdinalIgnoreCase)&&gy==null)gy=ParseNumberList(line.Substring(split+1));
+            }
+            if(ccm==null||ccm.Length!=9||gx==null||gy==null||gx.Length<2||gx.Length!=gy.Length)return null;
+            var profile=new RgbColorProfile{Path=best,Ccm=ccm,GammaX=gx,GammaY=gy,GammaLut=new byte[16384],Mix=new int[9][]};
+            for(int k=0;k<9;k++){profile.Mix[k]=new int[256];for(int v=0;v<256;v++)profile.Mix[k][v]=(int)Math.Round(ccm[k]*v*16383.0/255.0);}
+            int segment=0;
+            for(int i=0;i<profile.GammaLut.Length;i++)
+            {
+                double x=i*1023.0/(profile.GammaLut.Length-1);
+                while(segment+1<gx.Length-1&&x>gx[segment+1])segment++;
+                double span=gx[segment+1]-gx[segment], t=span>0?(x-gx[segment])/span:0;
+                double y=gy[segment]+(gy[segment+1]-gy[segment])*t;
+                profile.GammaLut[i]=Clamp((int)Math.Round(y*255.0/1023.0));
+            }
+            rgbColorProfileCache[cacheKey]=profile; return profile;
+        }
+        catch{return null;}
+    }
+    void ApplyRgbColorProfile(ref byte r,ref byte g,ref byte b)
+    {
+        if(rgbColorProfile==null)return;
+        int[][] m=rgbColorProfile.Mix;
+        int ri=m[0][r]+m[1][g]+m[2][b], gi=m[3][r]+m[4][g]+m[5][b], bi=m[6][r]+m[7][g]+m[8][b];
+        if(ri<0)ri=0;else if(ri>16383)ri=16383;if(gi<0)gi=0;else if(gi>16383)gi=16383;if(bi<0)bi=0;else if(bi>16383)bi=16383;
+        r=rgbColorProfile.GammaLut[ri];g=rgbColorProfile.GammaLut[gi];b=rgbColorProfile.GammaLut[bi];
+    }
+    void RgbAt(int x,int y,out byte r,out byte g,out byte b){RgbAtCore(data,p,x,y,out r,out g,out b);ApplyRgbColorProfile(ref r,ref g,ref b);}
     static int ReadU16Core(byte[] source,int o,bool little){return little?(source[o]|(source[o+1]<<8)):((source[o]<<8)|source[o+1]);}
     static void WriteU16Core(byte[] target,ref int o,ushort v,bool little){if(little){target[o++]=(byte)(v&255);target[o++]=(byte)(v>>8);}else{target[o++]=(byte)(v>>8);target[o++]=(byte)(v&255);}}
     static byte RgbWordToByte(int word,int bits,bool lsb)
@@ -573,9 +640,9 @@ sealed class MainForm : Form
     }
     static void RgbAtCore(byte[] source,Params q,int x,int y,out byte r,out byte g,out byte b)
     {
-        if(IsRgbWordFormatName(q.Format))
+        if(q.Format!=null&&q.Format.StartsWith("RGB_R",StringComparison.OrdinalIgnoreCase))
         {
-            int o=q.Offset+y*q.Stride+x*6, bits=BitsForFormat(q.Format);
+            int o=q.Offset+y*q.Stride+x*6, bits=q.Bits>0?q.Bits:BitsForFormat(q.Format);
             r=RgbWordToByte(ReadU16Core(source,o,q.Little),bits,q.Lsb);
             g=RgbWordToByte(ReadU16Core(source,o+2,q.Little),bits,q.Lsb);
             b=RgbWordToByte(ReadU16Core(source,o+4,q.Little),bits,q.Lsb);
@@ -661,8 +728,9 @@ sealed class MainForm : Form
     {
         int scale=1; int ow=p.W, oh=p.H;
         Bitmap bmp=new Bitmap(ow,oh,PixelFormat.Format24bppRgb); BitmapData bd=bmp.LockBits(new Rectangle(0,0,ow,oh),ImageLockMode.WriteOnly,PixelFormat.Format24bppRgb); int bs=bd.Stride; byte[] pix=new byte[bs*oh];
+        bool rgb=IsRgb(),gray=IsGray(),yuv=IsYuv();
         for(int oy=0;oy<oh;oy++){int sy=Math.Min(p.H-1,oy*scale), dst=oy*bs; for(int ox=0;ox<ow;ox++){int sx=Math.Min(p.W-1,ox*scale), pos=dst+ox*3; byte r,g,b;
-            if(IsRgb())RgbAt(sx,sy,out r,out g,out b); else if(IsGray())GrayAt(sx,sy,out r,out g,out b); else if(IsYuv())YuvAt(sx,sy,out r,out g,out b); else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
+            if(rgb)RgbAt(sx,sy,out r,out g,out b); else if(gray)GrayAt(sx,sy,out r,out g,out b); else if(yuv)YuvAt(sx,sy,out r,out g,out b); else if(p.View==1){byte v=Stretch(RawAt(sx,sy));r=g=b=v;} else if(p.View==2){byte v=Stretch(RawAt(sx,sy));char c=BayerSite(sx,sy);r=c=='R'?v:(byte)0;g=c=='G'?v:(byte)0;b=c=='B'?v:(byte)0;} else {int ri,gi,bi;if(!full&&scale>=2)FastDemosaic2x2(sx,sy,out ri,out gi,out bi);else Demosaic(sx,sy,out ri,out gi,out bi);r=Stretch(ri);g=Stretch(gi);b=Stretch(bi);} pix[pos]=b;pix[pos+1]=g;pix[pos+2]=r;}}
         Marshal.Copy(pix,0,bd.Scan0,pix.Length); bmp.UnlockBits(bd); RotateBmp(bmp); return bmp;
     }
     void RotateBmp(Bitmap b){if(p.Rotate==90)b.RotateFlip(RotateFlipType.Rotate90FlipNone);else if(p.Rotate==180)b.RotateFlip(RotateFlipType.Rotate180FlipNone);else if(p.Rotate==270)b.RotateFlip(RotateFlipType.Rotate270FlipNone);}
@@ -770,7 +838,7 @@ sealed class MainForm : Form
         return false;
     }
     string WithExportHint(string s){return String.IsNullOrEmpty(exportLockHint)?s:(s+"  |  "+exportLockHint);}
-    void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite);}
+    void UpdateStatus(){if(multiMode){status.Text=WithExportHint("Showing "+gallery.Controls.Count+" images  card zoom "+(int)Math.Round(galleryZoom*100)+"%");return;} if(current==null||p==null)return; status.Text=WithExportHint(Path.GetFileName(openedPath)+"  source "+p.W+"x"+p.H+"  format "+p.Format+(rgbColorProfile!=null?"  color TXT "+Path.GetFileName(rgbColorProfile.Path):"")+"  image "+current.Width+"x"+current.Height+"  shown "+pic.Width+"x"+pic.Height+"  zoom "+(int)Math.Round(zoom*100)+"%  rotate "+p.Rotate+"  levels "+autoBlack+"-"+autoWhite);}
     string ExportKind(){return exportBox.SelectedItem==null?"PNG":exportBox.SelectedItem.ToString().ToUpperInvariant();}
     bool IsImageExportKind(string k){return k=="PNG"||k=="BMP"||k=="JPEG"||k=="TIFF";}
     string ExportExt(){return ExportExtFor(ExportKind());}
@@ -1101,6 +1169,7 @@ sealed class MainForm : Form
             Test("RAW14 packed bitstream", TestRaw14Packed);
             Test("RGB48/BGR48 endian decode", TestRgb48Endian);
             Test("RGB word 48B alignment decode", TestRgbWordAlignmentDecode);
+            Test("RGB TXT CCM/IPE gamma profile", TestRgbColorProfileSidecar);
             Test("repository fixture files", TestRepositoryFixtureFiles);
             Test("grayscale formats and dimension guess", TestGrayFormatsAndDimensionGuess);
             string sampleDir=SampleDirArg(args); if(!String.IsNullOrEmpty(sampleDir))Test("local golden camera samples",delegate{TestGoldenSamples(sampleDir);});
@@ -1352,6 +1421,20 @@ sealed class MainForm : Form
             q.Little=true; q.Lsb=true; rw=(ushort)rv; gw=(ushort)gv; bw=(ushort)bv;
             RgbAtCore(new byte[]{(byte)(rw&255),(byte)(rw>>8),(byte)(gw&255),(byte)(gw>>8),(byte)(bw&255),(byte)(bw>>8)},q,0,0,out r,out g,out b);
             Eq(label+" LSB little R",r,ByteFromBits(rv,bits)); Eq(label+" LSB little G",g,ByteFromBits(gv,bits)); Eq(label+" LSB little B",b,ByteFromBits(bv,bits));
+        }
+        static void TestRgbColorProfileSidecar()
+        {
+            string dir=Path.Combine(Path.GetTempPath(),"FastViewer_color_"+Guid.NewGuid().ToString("N")); Directory.CreateDirectory(dir);
+            try
+            {
+                string txt=Path.Combine(dir,"scene_16x16.txt"), image=Path.Combine(dir,"scene_16x16_frame.RGB_R14G14B14_48B_MSB");
+                File.WriteAllText(txt,"CCM:1,0,0,0,1,0,0,0,1\r\nipe_gamma_table_x=0,1023\r\nipe_gamma_table_y=0,1023\r\n");
+                var profile=LoadRgbColorProfile(image);
+                if(profile==null)throw new Exception("matching TXT was not loaded");
+                Eq("color profile CCM length",profile.Ccm.Length,9); Eq("color profile gamma length",profile.GammaLut.Length,16384);
+                Near("color profile midpoint",profile.GammaLut[8192],128,1);
+            }
+            finally{if(Directory.Exists(dir))Directory.Delete(dir,true);}
         }
         static void TestRgbWordAlignmentDecode()
         {
