@@ -152,7 +152,9 @@ RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。`RGB_R8G8B8_48B` / `RGB_R10G10B10_48B` / `RGB_R12G12B12_48B` / `RGB_R14G14B14_48B` / `RGB_R16G16B16_48B` 表示 RGB 三通道各 N-bit，使用 16-bit word 承载，因此仍然是 48 bit per pixel；当前支持 R/G/B 三个通道位深相同的 8/10/12/14/16-bit 组合；后缀末尾的 `_MSB` / `_LSB` 会自动选择 `Bits` 下拉框里的 bit alignment。若下游工具显示发黑或颜色异常，通常是字节序或 bit alignment 不一致：可尝试切换 `Endian` 或 `Bits` 后再打开/导出。
 
-对于 `RGB_RnGnBn_48B`，如果同目录存在文件名前缀匹配的 TXT，FastViewer 会自动读取其中的 `CCM` 和 `ipe_gamma_table_x / ipe_gamma_table_y`，按 `run_rgb.bat` 的 `mode=2` 顺序还原预览与图片导出的色彩。状态栏会显示实际使用的 `color TXT` 文件；`resultinfo.txt` 不参与匹配。缺少完整 CCM 或 IPE Gamma 表时保持原始线性显示。
+`RGB_RnGnBn_48B` 只提供单个 RGB48 文件时也可以正常打开，FastViewer 会按文件名中的宽高、位深和 `_MSB / _LSB` 解码。不过此时显示的是原始线性 RGB，画面通常偏暗，颜色可能与最终 JPG 不一致。要准确还原色彩，请把对应 TXT 放在同一目录，且让 TXT 文件名与 RGB48 文件名相同或作为其前缀。
+
+找到匹配 TXT 后，FastViewer 会自动读取其中的 `CCM` 和 `ipe_gamma_table_x / ipe_gamma_table_y`，按 `run_rgb.bat` 的 `mode=2` 顺序还原预览与图片导出的色彩。状态栏会显示实际使用的 `color TXT` 文件；`resultinfo.txt` 不参与匹配。缺少完整 CCM 或 IPE Gamma 表时保持原始线性显示。
 
 每次导出都会同时写出一个 sidecar 元数据文件，路径为 `导出文件名 + .json`，记录 source/output 的宽高、格式、stride、offset、endian、alignment、Bayer、rotate、YUV matrix/range 等，方便后续复现和排查。
 
