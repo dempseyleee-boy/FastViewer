@@ -298,7 +298,7 @@ sealed class MainForm : Form
         {
             d.Title="Open one or more phone camera files";
             d.Multiselect=true;
-            d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.rgb_*;*.bgr_*;*.gray;*.gray8;*.y8;*.mono8;*.gray16;*.y16;*.mono16;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.yuv;*.bin;*.dat|All files|*.*";
+            d.Filter="Phone camera files|*.raw*;*.rgb;*.bgr;*.rgba;*.bgra;*.rgb24;*.bgr24;*.rgba32;*.bgra32;*.rgb48;*.bgr48;*.rgb_*;*.bgr_*;*.gray;*.gray8;*.y8;*.mono8;*.gray16;*.y16;*.mono16;*.nv21;*.nv12;*.i420;*.yv12;*.yuv420p;*.p010;*.p010_lsb;*.yuv;*.bin;*.dat|All files|*.*";
             if(d.ShowDialog(this)==DialogResult.OK){if(d.FileNames.Length>1)OpenMany(d.FileNames);else{pathBox.Text=d.FileName; ApplyFileName(d.FileName);}}
         }
     }
@@ -309,6 +309,7 @@ sealed class MainForm : Form
         q.Offset=String.IsNullOrWhiteSpace(offsetBox.Text.Trim())?0:Int32.Parse(offsetBox.Text.Trim());
         q.Little=true; q.Lsb=DetectLsbAlignedFromName(path); q.Pattern=0; q.View=viewBox.SelectedIndex<0?0:viewBox.SelectedIndex; q.Rotate=rotBox.SelectedIndex<0?0:rotBox.SelectedIndex*90; q.YuvMatrix=YuvMatrixIndex(); q.YuvFullRange=YuvFullRange();
         q.Format=DetectFormatFromExtension(path,out q.Pattern);
+        if(String.Equals(q.Format,"P010",StringComparison.OrdinalIgnoreCase)){string pe=Path.GetExtension(path);q.Lsb=String.Equals(pe,".P010_LSB",StringComparison.OrdinalIgnoreCase)||String.Equals(pe,".P010_LSB_ALIGNED",StringComparison.OrdinalIgnoreCase)||(String.Equals(pe,".P010",StringComparison.OrdinalIgnoreCase)&&DetectP010LsbFromContent(path));}
         q.Packed=q.Format.EndsWith("PACKED"); q.Bits=BitsForFormat(q.Format);
         int ww,hh;
         if(TryDims(path,out ww,out hh)){q.W=ww;q.H=hh;}
@@ -669,12 +670,25 @@ sealed class MainForm : Form
         return source[q.Offset+y*q.Stride+x];
     }
     static byte Clamp(int v){return (byte)(v<0?0:(v>255?255:v));}
+    static bool DetectP010LsbFromContent(string path)
+    {
+        try
+        {
+            using(FileStream fs=File.OpenRead(path))using(BinaryReader br=new BinaryReader(fs))
+            {
+                int count=0,low=0,msb=0; long limit=Math.Min(fs.Length,8192);
+                while(fs.Position+1<limit){int v=br.ReadUInt16();if(v<=1023)low++;if((v&63)==0)msb++;count++;}
+                return count>=64&&low*100>=count*95&&low>msb;
+            }
+        }
+        catch{return false;}
+    }    static int P010SampleToByte(int word,bool lsb){int v=lsb?(word&1023):(word>>6);return (v*255+511)/1023;}
     void YuvAt(int x,int y,out byte rr,out byte gg,out byte bb)
     {
         int Y,U=128,V=128; string f=p.Format;
         if(f=="P010")
         {
-            int yo=p.Offset+y*p.Stride+x*2; Y=(data[yo]|(data[yo+1]<<8))>>8; int uvb=p.Offset+p.Stride*p.H; int uvo=uvb+(y/2)*p.Stride+(x/2)*4; U=(data[uvo]|(data[uvo+1]<<8))>>8; V=(data[uvo+2]|(data[uvo+3]<<8))>>8;
+            int yo=p.Offset+y*p.Stride+x*2; int yWord=data[yo]|(data[yo+1]<<8); Y=P010SampleToByte(yWord,p.Lsb); int uvb=p.Offset+p.Stride*p.H; int uvo=uvb+(y/2)*p.Stride+(x/2)*4; int uWord=data[uvo]|(data[uvo+1]<<8),vWord=data[uvo+2]|(data[uvo+3]<<8); U=P010SampleToByte(uWord,p.Lsb); V=P010SampleToByte(vWord,p.Lsb);
         }
         else
         {
@@ -1231,6 +1245,8 @@ sealed class MainForm : Form
             EqBool("rgb10 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R10G10B10_48B_MSB"),false);
             EqBool("rgb12 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R12G12B12_48B_MSB"),false);
             EqBool("rgb14 suffix msb",DetectLsbAlignedFromName("frame_640x480.RGB_R14G14B14_48B_MSB"),false);
+            EqBool("p010 suffix msb",DetectLsbAlignedFromName("frame_640x480.P010_MSB"),false);
+            EqBool("p010 suffix lsb",DetectLsbAlignedFromName("frame_640x480.P010_LSB"),true);
             EqBool("rgb16 suffix lsb",DetectLsbAlignedFromName("frame_640x480.RGB_R16G16B16_48B_LSB"),true);
             int pattern; string fmt; using(MainForm form=new MainForm(null)){fmt=form.DetectFormatFromExtension("frame_640x480.RAW14_GRBG_16B_MSB",out pattern);}
             if(fmt!="RAW14_16B"||pattern!=0)throw new Exception("RAW MSB suffix format parse failed: "+fmt+" pattern "+pattern);
@@ -1265,6 +1281,10 @@ sealed class MainForm : Form
             Eq("RGB_R14G14B14_48B bits",BitsForFormat("RGB_R14G14B14_48B"),14);
             Eq("RGB_R16G16B16_48B bits",BitsForFormat("RGB_R16G16B16_48B"),16);
             Eq("NV21 stride",DefaultStride(8,"NV21"),8);
+            Eq("P010 MSB white",P010SampleToByte(1023<<6,false),255);
+            Eq("P010 LSB white",P010SampleToByte(1023,true),255);
+            string p010=Path.Combine(Path.GetTempPath(),"fastviewer_p010_lsb_"+Guid.NewGuid().ToString("N")+".p010");
+            try{byte[] sample=new byte[128*2];for(int i=0;i<sample.Length;i+=2){sample[i]=0xFF;sample[i+1]=0x03;}File.WriteAllBytes(p010,sample);EqBool("P010 content LSB detect",DetectP010LsbFromContent(p010),true);}finally{try{if(File.Exists(p010))File.Delete(p010);}catch{}}
             Eq("GRAY8 stride",DefaultStride(8,"GRAY8"),8);
             Eq("GRAY16 stride",DefaultStride(8,"GRAY16"),16);
             Params q=new Params{W=8,H=4,Format="NV21",Stride=8,Offset=7};

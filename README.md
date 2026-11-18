@@ -144,11 +144,11 @@ face_3280x2464.RAW14_GRBG_16B_LSB
 - `I420`
 - `YV12`
 - `YUV420P`
-- `P010`
+- `P010` / `P010_LSB`（10-bit YUV420，分别支持 MSB / LSB aligned）
 
 RAW 导出会使用当前 `Bayer` 下拉框里的 pattern 生成后缀，例如 `.RAW14_GRBG_16B`。注意：RAW 导出是把当前解码后的 RGB 画面重新编码成 Bayer dump，适合格式互转和喂给下游工具链；它不能恢复原 sensor RAW 里已经丢失的信息。
 
-灰度格式导出会生成单通道 dump；`GRAY8 / Y8 / MONO8` 为 1 byte per pixel，`GRAY16 / Y16 / MONO16` 为 2 bytes per pixel，并尊重 `Endian`。YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。
+灰度格式导出会生成单通道 dump；`GRAY8 / Y8 / MONO8` 为 1 byte per pixel，`GRAY16 / Y16 / MONO16` 为 2 bytes per pixel，并尊重 `Endian`。YUV420 / P010 系列导出要求宽高为偶数，这是手机 camera dump 的常见要求。`YUV Matrix` 支持 `BT.601`、`BT.709`、`BT.2020`，`YUV Range` 支持 `Limited` / `Full`，读取和导出 YUV 时都会使用当前选择。 `P010` 默认按 MSB aligned 读取；程序会对普通 `.P010` 文件抽样判断低 10 位有效的 LSB 数据；也可以明确使用 `.P010_LSB` 后缀。
 
 `RGB48` / `BGR48` 是 16-bit per channel dump，导出和读取都会尊重左侧 `Endian` 选项。`RGB_R8G8B8_48B` / `RGB_R10G10B10_48B` / `RGB_R12G12B12_48B` / `RGB_R14G14B14_48B` / `RGB_R16G16B16_48B` 表示 RGB 三通道各 N-bit，使用 16-bit word 承载，因此仍然是 48 bit per pixel；当前支持 R/G/B 三个通道位深相同的 8/10/12/14/16-bit 组合；后缀末尾的 `_MSB` / `_LSB` 会自动选择 `Bits` 下拉框里的 bit alignment。若下游工具显示发黑或颜色异常，通常是字节序或 bit alignment 不一致：可尝试切换 `Endian` 或 `Bits` 后再打开/导出。
 
