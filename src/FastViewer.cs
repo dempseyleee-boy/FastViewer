@@ -964,7 +964,12 @@ sealed class MainForm : Form
         else{yv=ClampD(16.0+219.0*y/255.0);uv=ClampD(128.0+224.0*u/255.0);vv=ClampD(128.0+224.0*v/255.0);}
     }
     static char BayerSiteForPattern(int pattern,int x,int y){bool ox=(x&1)!=0,oy=(y&1)!=0; switch(pattern){case 1:return !oy?(ox?'G':'R'):(ox?'B':'G');case 2:return !oy?(ox?'G':'B'):(ox?'R':'G');case 3:return !oy?(ox?'B':'G'):(ox?'G':'R');default:return !oy?(ox?'R':'G'):(ox?'G':'B');}}
-    byte[] EncodeConvertedFrame(Bitmap bmp,string kind)
+    byte[] CopySourceP010()
+    {
+        long expected=(long)p.Stride*p.H*3/2;
+        if(data==null||p==null||!String.Equals(p.Format,"P010",StringComparison.OrdinalIgnoreCase)||data.LongLength<p.Offset+expected)throw new Exception("P010 source payload is incomplete.");
+        byte[] result=new byte[expected]; Buffer.BlockCopy(data,p.Offset,result,0,(int)expected); return result;
+    }    byte[] EncodeConvertedFrame(Bitmap bmp,string kind)
     {
         int stride; byte[] pix=BitmapBytes(bmp,out stride); int w=bmp.Width,h=bmp.Height;
         if(kind=="RGB24"||kind=="BGR24"||kind=="RGBA32"||kind=="BGRA32"||IsRgb16FormatName(kind))return EncodeRgbDump(pix,stride,w,h,kind);
@@ -1134,7 +1139,7 @@ sealed class MainForm : Form
             bool forceExt=d.FilterIndex<=ExportAllowedCount();
             string outPath=NormalizeExportPath(d.FileName,kind,forceExt);
             status.Text="Exporting "+kind+"...";
-            ThreadPool.QueueUserWorkItem(delegate{try{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(outPath,ExportImageFormatFor(kind)); else File.WriteAllBytes(outPath,EncodeConvertedFrame(b,kind)); WriteSidecar(outPath,kind,b.Width,b.Height,p,openedPath); b.Dispose(); BeginInvoke((Action)delegate{status.Text="Exported: "+outPath;});}catch(Exception ex){ShowErr(ex);}});
+            ThreadPool.QueueUserWorkItem(delegate{try{if(kind=="P010"&&String.Equals(p.Format,"P010",StringComparison.OrdinalIgnoreCase)){File.WriteAllBytes(outPath,CopySourceP010());WriteSidecar(outPath,kind,p.W,p.H,p,openedPath);}else{Bitmap b=BuildBitmap(true); if(IsImageExportKind(kind))b.Save(outPath,ExportImageFormatFor(kind)); else File.WriteAllBytes(outPath,EncodeConvertedFrame(b,kind)); WriteSidecar(outPath,kind,b.Width,b.Height,p,openedPath); b.Dispose();} BeginInvoke((Action)delegate{status.Text="Exported: "+outPath;});}catch(Exception ex){ShowErr(ex);}});
         }
     }
     void ExportManyImages()
